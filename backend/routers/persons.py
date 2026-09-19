@@ -38,6 +38,8 @@ def create_person(payload: PersonCreate) -> PersonOut:
     """
     supabase = get_supabase()
     data = payload.model_dump(mode="json")
+    # Always create as an active case so it appears under Cases → Active cases
+    data["status"] = "active"
 
     result = supabase.table("persons").insert(data).execute()
 

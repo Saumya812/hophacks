@@ -2,8 +2,8 @@
  * Homepage — disclaimer, hero, search, and active cases.
  * Supports keyword filters and Gemini natural-language search.
  */
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { listPersons, naturalSearch } from '../api.js'
 import PersonCard from '../components/PersonCard.jsx'
 import FaceMatchPanel from '../components/FaceMatchPanel.jsx'
@@ -11,6 +11,7 @@ import LiveTipFeed from '../components/LiveTipFeed.jsx'
 import AlertsAndMemoryPanel from '../components/AlertsAndMemoryPanel.jsx'
 
 export default function Home() {
+  const location = useLocation()
   const [persons, setPersons] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -18,10 +19,11 @@ export default function Home() {
   const [mode, setMode] = useState('keyword') // keyword | natural
   const [filtersUsed, setFiltersUsed] = useState(null)
 
-  async function loadActive() {
+  const loadActive = useCallback(async () => {
     setLoading(true)
     setError('')
     setFiltersUsed(null)
+    setQuery('')
     try {
       const data = await listPersons({ status: 'active' })
       setPersons(data.persons || [])
@@ -31,11 +33,24 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Reload whenever user lands on Cases (/), including after reporting a new case
+  useEffect(() => {
+    if (location.pathname === '/') {
+      loadActive()
+    }
+  }, [location.pathname, location.key, loadActive])
 
   useEffect(() => {
-    loadActive()
-  }, [])
+    function onVisible() {
+      if (document.visibilityState === 'visible' && location.pathname === '/') {
+        loadActive()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [location.pathname, loadActive])
 
   async function handleSearch(e) {
     e.preventDefault()

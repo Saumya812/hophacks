@@ -38,7 +38,11 @@ class PersonCreate(BaseModel):
         max_length=5000,
         examples=["5'6\", brown hair, last seen wearing a red jacket."],
     )
-    photo_url: Optional[str] = Field(None, max_length=2000)
+    photo_url: Optional[str] = Field(
+        None,
+        max_length=8_000_000,
+        description="HTTP(S) URL or data:image… URL for the case photo",
+    )
     status: PersonStatus = "active"
     police_report_number: Optional[str] = Field(None, max_length=100)
 

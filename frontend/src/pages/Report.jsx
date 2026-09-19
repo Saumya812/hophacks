@@ -18,9 +18,19 @@ const empty = {
   status: 'active',
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function Report() {
   const navigate = useNavigate()
   const [form, setForm] = useState(empty)
+  const [photoName, setPhotoName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState('')
@@ -31,6 +41,22 @@ export default function Report() {
     setForm((prev) => ({ ...prev, [field]: value }))
     setDupes(null)
     setForceCreate(false)
+  }
+
+  async function onPhotoFile(file) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError('Photo must be an image (JPG or PNG).')
+      return
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError('Photo must be under 4MB.')
+      return
+    }
+    setError('')
+    const dataUrl = await fileToDataUrl(file)
+    update('photo_url', dataUrl)
+    setPhotoName(file.name)
   }
 
   async function create() {
@@ -46,7 +72,8 @@ export default function Report() {
       status: 'active',
     }
     const created = await createPerson(payload)
-    navigate(`/person/${created.id}`)
+    // Land on the new case; Cases list refreshes when you click Cases in the nav
+    navigate(`/person/${created.id}`, { replace: true })
   }
 
   async function handleSubmit(e) {
@@ -82,7 +109,8 @@ export default function Report() {
       <div>
         <h1 className="font-display text-3xl text-navy sm:text-4xl">Report a missing person</h1>
         <p className="mt-2 text-navy/70">
-          Create a public case profile. We screen for possible duplicates before saving.
+          Create a public case profile. It will appear under <strong>Cases → Active cases</strong> with
+          status active. We screen for possible duplicates before saving.
         </p>
       </div>
 
@@ -160,14 +188,26 @@ export default function Report() {
         </div>
 
         <div>
-          <label className="label-field" htmlFor="photo_url">Photo URL</label>
+          <label className="label-field" htmlFor="photo_file">Photo (upload or URL)</label>
+          <input
+            id="photo_file"
+            type="file"
+            accept="image/*"
+            className="input-field"
+            onChange={(e) => onPhotoFile(e.target.files?.[0])}
+          />
+          {photoName && (
+            <p className="mt-1 text-xs text-navy/55">Selected: {photoName}</p>
+          )}
           <input
             id="photo_url"
-            type="url"
-            className="input-field"
-            placeholder="https://…"
-            value={form.photo_url}
-            onChange={(e) => update('photo_url', e.target.value)}
+            className="input-field mt-2"
+            placeholder="Or paste https://… image URL"
+            value={form.photo_url.startsWith('data:') ? '' : form.photo_url}
+            onChange={(e) => {
+              setPhotoName('')
+              update('photo_url', e.target.value)
+            }}
           />
         </div>
 

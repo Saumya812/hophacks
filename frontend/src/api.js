@@ -6,30 +6,50 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-    ...options,
-  })
+  const { timeoutMs, signal: outerSignal, ...rest } = options
+  const ctrl = timeoutMs ? new AbortController() : null
+  const timer = timeoutMs
+    ? setTimeout(() => ctrl.abort(), timeoutMs)
+    : null
 
-  let body = null
-  const text = await res.text()
-  if (text) {
-    try {
-      body = JSON.parse(text)
-    } catch {
-      body = text
+  // Combine caller signal + timeout signal
+  let signal = outerSignal
+  if (ctrl && outerSignal) {
+    outerSignal.addEventListener('abort', () => ctrl.abort(), { once: true })
+    signal = ctrl.signal
+  } else if (ctrl) {
+    signal = ctrl.signal
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(rest.headers || {}),
+      },
+      ...rest,
+      signal,
+    })
+
+    let body = null
+    const text = await res.text()
+    if (text) {
+      try {
+        body = JSON.parse(text)
+      } catch {
+        body = text
+      }
     }
-  }
 
-  if (!res.ok) {
-    const detail = body?.detail || body || res.statusText
-    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
-  }
+    if (!res.ok) {
+      const detail = body?.detail || body || res.statusText
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
+    }
 
-  return body
+    return body
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 /** List persons with optional filters: name, location, age_min, age_max, status */
@@ -79,10 +99,11 @@ export function naturalSearch(query) {
 }
 
 /** Smart Person Search — scrape public sources + Gemini report */
-export function lookupSearch(payload) {
+export function lookupSearch(payload, { timeoutMs = 150_000 } = {}) {
   return request('/lookup/search', {
     method: 'POST',
     body: JSON.stringify(payload),
+    timeoutMs,
   })
 }
 

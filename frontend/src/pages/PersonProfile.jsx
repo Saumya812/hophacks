@@ -7,6 +7,7 @@ import { getPerson, listSightings, getCaseSummary, refreshCaseSummary } from '..
 import SightingsMap from '../components/SightingsMap.jsx'
 import FlyerButton from '../components/FlyerButton.jsx'
 import CaseToolsPanel from '../components/CaseToolsPanel.jsx'
+import CaseWebIntelPanel from '../components/CaseWebIntelPanel.jsx'
 
 export default function PersonProfile() {
   const { id } = useParams()
@@ -178,7 +179,7 @@ export default function PersonProfile() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-display text-2xl text-navy">Sightings map</h2>
+        <h2 className="font-display text-2xl text-navy">Community tips map</h2>
         <SightingsMap
           lastSeenLocation={person.last_seen_location}
           sightings={sightings}
@@ -186,7 +187,7 @@ export default function PersonProfile() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-display text-2xl text-navy">Timeline</h2>
+        <h2 className="font-display text-2xl text-navy">Community tips timeline</h2>
         {timeline.length === 0 ? (
           <p className="text-navy/60">No events yet.</p>
         ) : (
@@ -217,6 +218,9 @@ export default function PersonProfile() {
           </ol>
         )}
       </section>
+
+      {/* Lookup-equivalent public web crawl for this case */}
+      <CaseWebIntelPanel person={person} />
 
       <CaseToolsPanel person={person} onPersonChange={setPerson} />
     </div>

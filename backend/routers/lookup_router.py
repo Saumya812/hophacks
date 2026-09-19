@@ -40,7 +40,7 @@ router = APIRouter(prefix="/lookup", tags=["lookup"])
 # ---------------------------------------------------------------------------
 
 CACHE_TTL_SECONDS = 60 * 60  # 1 hour
-RATE_LIMIT_MAX = 5
+RATE_LIMIT_MAX = 20
 RATE_LIMIT_WINDOW = 60 * 60
 
 # name_key -> (expires_at, report_dict)
@@ -167,14 +167,12 @@ async def lookup_search(payload: LookupSearchRequest, request: Request) -> Dict[
     geocode locations, and return a structured report.
     """
     _purge_expired()
-    ip = _client_ip(request)
-    _check_rate_limit(ip)
 
     full_name = _resolve_name(payload)
     name_key = _normalize_name(full_name)
     photo_data_url = _normalize_photo(payload.photo)
 
-    # Cache hit by name — only reuse if we previously extracted structured mentions
+    # Cache hit by name — reuse without burning rate limit
     cached = _name_cache.get(name_key)
     if cached and cached[0] > time.time() and (cached[1].get("sightings") or []):
         report = dict(cached[1])
@@ -186,6 +184,9 @@ async def lookup_search(payload: LookupSearchRequest, request: Request) -> Dict[
             _id_cache[report["report_id"]] = (cached[0], report)
         report["cached"] = True
         return report
+
+    ip = _client_ip(request)
+    _check_rate_limit(ip)
 
     report = await _build_report(full_name, photo_data_url)
     report["cached"] = False

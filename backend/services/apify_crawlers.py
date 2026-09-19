@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -135,18 +134,18 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
         client,
         actor,
         {
-            "searchTerms": [name, f"{name} missing"],
-            "maxItems": 15,
+            "searchTerms": [name],
+            "maxItems": 8,
             "scrapeComments": True,
-            "maxComments": 12,
-            "commentDepth": 2,
+            "maxComments": 5,
+            "commentDepth": 1,
             "sort": "relevance",
             "timeFilter": "all",
             "maximizeCoverage": False,
             "fetchPostDetails": True,
             "includeNSFW": False,
         },
-        timeout_secs=120,
+        timeout_secs=60,
     )
 
     out: List[Dict[str, Any]] = []
@@ -191,7 +190,6 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
             )
         )
 
-        # Nested comments embedded on the post object
         for c in item.get("comments") or []:
             if not isinstance(c, dict):
                 continue
@@ -212,16 +210,17 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
 
 
 # ---------------------------------------------------------------------------
-# Instagram — posts (+ comments on top hits)
+# Instagram — single actor run (posts via profile/name search)
 # ---------------------------------------------------------------------------
 
 async def crawl_instagram(client: httpx.AsyncClient, full_name: str) -> List[Dict[str, Any]]:
+    """
+    One Apify run only — previous version chained 3 sync runs (up to ~5 min).
+    """
     settings = get_settings()
     actor = (settings.apify_instagram_actor or DEFAULT_INSTAGRAM_ACTOR).replace("/", "~")
     name = " ".join(full_name.split())
-    compact = re.sub(r"[^a-zA-Z0-9]", "", name)
 
-    # 1) Profile / mention-oriented post discovery by name
     post_items = await _run_actor(
         client,
         actor,
@@ -229,31 +228,13 @@ async def crawl_instagram(client: httpx.AsyncClient, full_name: str) -> List[Dic
             "search": name,
             "searchType": "user",
             "resultsType": "posts",
-            "resultsLimit": 12,
-            "searchLimit": 5,
+            "resultsLimit": 8,
+            "searchLimit": 3,
         },
-        timeout_secs=120,
+        timeout_secs=55,
     )
 
-    # 2) Hashtag-style search if name compresses cleanly
-    if compact and len(compact) >= 4:
-        tag_items = await _run_actor(
-            client,
-            actor,
-            {
-                "search": compact,
-                "searchType": "hashtag",
-                "resultsType": "posts",
-                "resultsLimit": 8,
-                "searchLimit": 3,
-            },
-            timeout_secs=90,
-        )
-        post_items.extend(tag_items)
-
     out: List[Dict[str, Any]] = []
-    post_urls: List[str] = []
-
     for item in post_items:
         caption = (
             item.get("caption")
@@ -273,6 +254,19 @@ async def crawl_instagram(client: httpx.AsyncClient, full_name: str) -> List[Dic
         elif isinstance(item.get("owner"), dict):
             owner = item["owner"].get("username") or ""
 
+        # Include top-level comments if the actor already returned them
+        comments = item.get("latestComments") or item.get("comments") or []
+        comment_bits = []
+        for c in comments[:5]:
+            if isinstance(c, dict):
+                t = c.get("text") or c.get("comment") or ""
+                if t:
+                    comment_bits.append(t)
+            elif isinstance(c, str) and c.strip():
+                comment_bits.append(c)
+        if comment_bits:
+            caption = (caption + " | Comments: " + " · ".join(comment_bits)).strip(" |")
+
         title = f"@{owner}" if owner else "Instagram post"
         out.append(
             _normalize(
@@ -283,35 +277,6 @@ async def crawl_instagram(client: httpx.AsyncClient, full_name: str) -> List[Dic
                 date=_date_from(item.get("timestamp") or item.get("takenAt") or item.get("date")),
             )
         )
-        if url and ("/p/" in url or "/reel/" in url) and url not in post_urls:
-            post_urls.append(url)
-
-    # 3) Comments on a few top posts
-    if post_urls:
-        comment_items = await _run_actor(
-            client,
-            actor,
-            {
-                "directUrls": post_urls[:3],
-                "resultsType": "comments",
-                "resultsLimit": 15,
-            },
-            timeout_secs=90,
-        )
-        for item in comment_items:
-            text = item.get("text") or item.get("comment") or ""
-            if not text.strip():
-                continue
-            url = item.get("postUrl") or item.get("url") or item.get("inputUrl") or ""
-            out.append(
-                _normalize(
-                    source="instagram",
-                    title="Instagram comment",
-                    snippet=text,
-                    url=url,
-                    date=_date_from(item.get("timestamp") or item.get("date")),
-                )
-            )
 
     return out
 
@@ -330,10 +295,10 @@ async def crawl_facebook(client: httpx.AsyncClient, full_name: str) -> List[Dict
         actor,
         {
             "query": name,
-            "resultsCount": 15,
+            "resultsCount": 8,
             "searchType": "top",
         },
-        timeout_secs=120,
+        timeout_secs=55,
     )
 
     out: List[Dict[str, Any]] = []
@@ -379,7 +344,7 @@ async def crawl_facebook(client: httpx.AsyncClient, full_name: str) -> List[Dict
 async def collect_apify_mentions(full_name: str) -> Dict[str, Any]:
     """
     Run Reddit + Instagram + Facebook Apify crawlers in parallel.
-    Returns raw mentions + per-source status (same shape as scraper_service).
+    Hard-capped so a stuck actor cannot hang Smart Person Search forever.
     """
     if not apify_enabled():
         return {
@@ -391,27 +356,41 @@ async def collect_apify_mentions(full_name: str) -> Dict[str, Any]:
             },
         }
 
-    timeout = httpx.Timeout(150.0, connect=15.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        reddit, instagram, facebook = await asyncio.gather(
-            crawl_reddit(client, full_name),
-            crawl_instagram(client, full_name),
-            crawl_facebook(client, full_name),
-            return_exceptions=True,
-        )
+    async def _run_all() -> Dict[str, Any]:
+        timeout = httpx.Timeout(70.0, connect=15.0)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            reddit, instagram, facebook = await asyncio.gather(
+                crawl_reddit(client, full_name),
+                crawl_instagram(client, full_name),
+                crawl_facebook(client, full_name),
+                return_exceptions=True,
+            )
 
-    raw: List[Dict[str, Any]] = []
-    status: Dict[str, str] = {}
+        raw: List[Dict[str, Any]] = []
+        status: Dict[str, str] = {}
 
-    for label, value in (
-        ("apify_reddit", reddit),
-        ("apify_instagram", instagram),
-        ("apify_facebook", facebook),
-    ):
-        if isinstance(value, Exception):
-            status[label] = f"error: {value}"
-            continue
-        status[label] = f"ok ({len(value)} hits)"
-        raw.extend(value)
+        for label, value in (
+            ("apify_reddit", reddit),
+            ("apify_instagram", instagram),
+            ("apify_facebook", facebook),
+        ):
+            if isinstance(value, Exception):
+                status[label] = f"error: {value}"
+                continue
+            status[label] = f"ok ({len(value)} hits)"
+            raw.extend(value)
 
-    return {"raw_mentions": raw, "sources_status": status}
+        return {"raw_mentions": raw, "sources_status": status}
+
+    try:
+        return await asyncio.wait_for(_run_all(), timeout=75.0)
+    except asyncio.TimeoutError:
+        logger.warning("Apify collect timed out after 75s for %r", full_name)
+        return {
+            "raw_mentions": [],
+            "sources_status": {
+                "apify_reddit": "error: timed out",
+                "apify_instagram": "error: timed out",
+                "apify_facebook": "error: timed out",
+            },
+        }
