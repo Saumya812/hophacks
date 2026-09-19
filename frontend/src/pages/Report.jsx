@@ -158,7 +158,7 @@ export default function Report() {
             <h1 className="font-display text-3xl sm:text-4xl">Report a missing person</h1>
             <p className="mt-2 text-sm text-white/65 sm:text-base">
               This profile will be visible to the public. Please provide as much detail as
-              possible.
+              possible. We check for likely duplicate cases when you publish.
             </p>
           </div>
 
