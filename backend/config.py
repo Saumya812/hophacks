@@ -6,16 +6,19 @@ Keep secrets out of source control — use backend/.env locally.
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ENV_FILE = Path(__file__).resolve().parent / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings read from the environment."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -54,8 +57,12 @@ class Settings(BaseSettings):
     spacetimedb_token: str = ""
     snowflake_account: str = ""
 
-    # Comma-separated list of allowed frontend origins
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    # Comma-separated list of allowed frontend origins (Vite may use 5173 or 5174)
+    cors_origins: str = (
+        "http://localhost:5173,http://localhost:5174,"
+        "http://127.0.0.1:5173,http://127.0.0.1:5174,"
+        "http://localhost:3000,http://127.0.0.1:3000"
+    )
 
     # Mock authenticated user (no real auth in v1)
     mock_user_id: str = "00000000-0000-0000-0000-000000000001"

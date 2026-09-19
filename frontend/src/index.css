@@ -108,6 +108,57 @@ body {
   }
 }
 
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tip-success-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes found-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(520deg);
+    opacity: 0;
+  }
+}
+
 @layer components {
   .font-display {
     font-family: 'Playfair Display', Georgia, serif;
@@ -263,6 +314,67 @@ body {
     animation: pulse-dot 1.6s ease-in-out infinite;
   }
 
+  .live-pulse-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: #16a34a;
+    border-radius: 50%;
+    animation: live-pulse 2s infinite;
+  }
+
+  .toast-slide-in {
+    animation: toast-slide-in 0.3s ease both;
+  }
+
+  .found-check-path {
+    stroke-dasharray: 48;
+    stroke-dashoffset: 48;
+    animation: found-check-draw 0.7s ease forwards 0.15s;
+  }
+
+  .found-confetti {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .found-confetti-piece {
+    position: absolute;
+    top: -8px;
+    width: 8px;
+    height: 12px;
+    border-radius: 1px;
+    animation: confetti-fall 2.8s linear infinite;
+  }
+
+  .found-confetti-piece.piece-0 {
+    left: 8%;
+    background: #c9a962;
+    animation-delay: 0s;
+  }
+  .found-confetti-piece.piece-1 {
+    left: 22%;
+    background: #fff;
+    animation-delay: 0.35s;
+  }
+  .found-confetti-piece.piece-2 {
+    left: 40%;
+    background: #16a34a;
+    animation-delay: 0.7s;
+  }
+  .found-confetti-piece.piece-3 {
+    left: 58%;
+    background: #c9a962;
+    animation-delay: 1.05s;
+  }
+  .found-confetti-piece.piece-4 {
+    left: 78%;
+    background: #fff;
+    animation-delay: 1.4s;
+  }
+
   .modal-backdrop {
     animation: backdrop-in 200ms ease-out both;
   }
@@ -360,11 +472,27 @@ body {
     border: clamp(4px, 0.7vw, 8px) solid var(--frame);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     transition: transform 0.35s ease, box-shadow 0.35s ease;
+    animation: fade-up 0.65s ease-out both;
+  }
+
+  .wall-frame-interactive {
+    display: block;
+    width: 100%;
+    padding: 0;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    text-align: left;
   }
 
   .wall-frame:hover {
     transform: translateY(-3px);
     box-shadow: 0 10px 28px rgba(58, 56, 53, 0.16);
+  }
+
+  .wall-frame:focus-visible {
+    outline: 2px solid var(--sage);
+    outline-offset: 3px;
   }
 
   .wall-frame-portrait {
@@ -380,6 +508,60 @@ body {
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+
+  .wall-frame-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 12px;
+    background: linear-gradient(to top, rgba(58, 56, 53, 0.78) 0%, transparent 55%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+  }
+
+  .wall-frame-interactive:hover .wall-frame-overlay,
+  .wall-frame-interactive:focus-visible .wall-frame-overlay {
+    opacity: 1;
+  }
+
+  .wall-frame-name {
+    margin: 0;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(0.8rem, 1.5vw, 1rem);
+    color: #fff;
+    line-height: 1.2;
+  }
+
+  .wall-frame-meta {
+    margin: 2px 0 0;
+    font-size: clamp(0.65rem, 1.1vw, 0.75rem);
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wall-frame-cta {
+    margin: 6px 0 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #e8ece8;
+  }
+
+  .wall-frame-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background: #dc2626;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
   }
 
   .wall-frame-empty {
@@ -425,4 +607,6 @@ body {
       aspect-ratio: 3 / 4;
     }
   }
+
+  /* Sticky help dock — removed */
 }

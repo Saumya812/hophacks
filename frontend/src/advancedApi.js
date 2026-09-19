@@ -41,6 +41,28 @@ export function getCityDashboard() {
   return request('/dashboard/city')
 }
 
+export function getBaltimoreCivic() {
+  return request('/analytics/baltimore/civic')
+}
+
+export function getBaltimoreCameras(limit = 200) {
+  return request(`/analytics/baltimore/cameras?limit=${limit}`)
+}
+
+export function getBaltimoreNearest(personId, { k = 5, maxM = 2500 } = {}) {
+  const params = new URLSearchParams({
+    k: String(k),
+    max_m: String(maxM),
+  })
+  return request(`/analytics/baltimore/nearest/${personId}?${params}`)
+}
+
+export function getBaltimoreTipClusters(baltimoreOnly = true) {
+  return request(
+    `/analytics/baltimore/tip-clusters?baltimore_only=${baltimoreOnly ? 'true' : 'false'}`,
+  )
+}
+
 export function getCaseActivity(personId, bucketHours = 24) {
   return request(`/analytics/case-activity/${personId}?bucket_hours=${bucketHours}`)
 }

@@ -1,9 +1,10 @@
 /**
  * Person profile — navy hero + tabbed Overview / Tips & Map / Web Intel / Family Tools.
+ * Additive: live tip feed, activity timeline, TipForm, found overlay (realtime).
  */
 import { Component, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { getPerson, listSightings, getCaseSummary, refreshCaseSummary, API_BASE } from '../api.js'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { getPerson, listSightings, getCaseSummary, refreshCaseSummary } from '../api.js'
 import { listCaseUpdates } from '../advancedApi.js'
 import SightingsMap from '../components/SightingsMap.jsx'
 import FlyerButton from '../components/FlyerButton.jsx'
@@ -15,6 +16,12 @@ import HowYouCanHelp from '../components/HowYouCanHelp.jsx'
 import CaseFreshness from '../components/CaseFreshness.jsx'
 import CaseSourceLibrary from '../components/CaseSourceLibrary.jsx'
 import SaveCaseButton from '../components/SaveCaseButton.jsx'
+import NearestCamerasPanel from '../components/NearestCamerasPanel.jsx'
+import TipForm from '../components/TipForm.jsx'
+import FoundOverlay from '../components/FoundOverlay.jsx'
+import CaseActivityTimeline from '../components/CaseActivityTimeline.jsx'
+import { showToast } from '../components/Toast.jsx'
+import { useCaseActivityLive } from '../hooks/useCaseActivityLive.js'
 import {
   caseUpdateLabel,
   compareTimelineEvents,
@@ -61,6 +68,7 @@ class PanelErrorBoundary extends Component {
 
 export default function PersonProfile() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [person, setPerson] = useState(null)
   const [sightings, setSightings] = useState([])
   const [updates, setUpdates] = useState([])
@@ -70,6 +78,7 @@ export default function PersonProfile() {
   const [error, setError] = useState('')
   const [tab, setTab] = useState('overview')
   const [shareMsg, setShareMsg] = useState('')
+  const [showFoundOverlay, setShowFoundOverlay] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -115,6 +124,56 @@ export default function PersonProfile() {
       cancelled = true
     }
   }, [id])
+
+  // SpacetimeDB live: case_activity tips / found → refetch via FastAPI (private rows)
+  useCaseActivityLive({
+    personId: id,
+    onTipForPerson: () => {
+      listSightings(id)
+        .then((s) => setSightings(s.sightings || []))
+        .catch(() => {})
+      showToast('New tip submitted for this case', 'info')
+    },
+    onPersonFound: () => {
+      getPerson(id)
+        .then((p) => {
+          setPerson(p)
+          if ((p.status || '').toLowerCase() === 'found') {
+            setShowFoundOverlay(true)
+            showToast(`${p.name || 'This person'} has been found safe`, 'success')
+            setTimeout(() => navigate('/found'), 3000)
+          }
+        })
+        .catch(() => {})
+    },
+  })
+
+  // Light poll backup if Spacetime WS is down
+  useEffect(() => {
+    if (!id) return undefined
+    const timer = setInterval(() => {
+      listSightings(id)
+        .then((s) => setSightings(s.sightings || []))
+        .catch(() => {})
+      getPerson(id)
+        .then((p) => {
+          setPerson((prev) => {
+            if (
+              prev &&
+              (prev.status || '').toLowerCase() !== 'found' &&
+              (p.status || '').toLowerCase() === 'found'
+            ) {
+              setShowFoundOverlay(true)
+              showToast(`${p.name} has been found safe`, 'success')
+              setTimeout(() => navigate('/found'), 3000)
+            }
+            return p
+          })
+        })
+        .catch(() => {})
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [id, navigate])
 
   async function onRefreshSummary() {
     setSummaryBusy(true)
@@ -216,6 +275,12 @@ export default function PersonProfile() {
 
   return (
     <div className="bg-cream pb-20">
+      {showFoundOverlay && (
+        <FoundOverlay
+          personName={person.name}
+          onClose={() => setShowFoundOverlay(false)}
+        />
+      )}
       {error && (
         <p className="mx-auto max-w-6xl px-4 pt-4 text-sm text-amber-900 sm:px-6">{error}</p>
       )}
@@ -235,9 +300,29 @@ export default function PersonProfile() {
 
           <div className="min-w-0 flex-1 space-y-3">
             {isActive && (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-emerald-300">
+                  <span className="pulse-dot h-2 w-2 rounded-full bg-success" />
+                  Active
+                </span>
+                <span
+                  className="inline-flex items-center gap-2 text-navy"
+                  style={{
+                    fontFamily: 'Inter, system-ui',
+                    fontSize: '12px',
+                    background: 'rgba(255,255,255,0.92)',
+                    padding: '4px 10px',
+                    borderRadius: '999px',
+                  }}
+                >
+                  <span className="live-pulse-dot" aria-hidden />
+                  LIVE — tips update in real time
+                </span>
+              </div>
+            )}
+            {!isActive && (person.status || '').toLowerCase() === 'found' && (
               <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-emerald-300">
-                <span className="pulse-dot h-2 w-2 rounded-full bg-success" />
-                Active
+                Found · verified
               </span>
             )}
             <h1 className="font-display text-3xl text-white sm:text-4xl">{person.name}</h1>
@@ -430,6 +515,10 @@ export default function PersonProfile() {
           <div className="space-y-6">
             <section className="space-y-3">
               <h2 className="font-display text-2xl text-navy">Community tips map</h2>
+              <p className="text-sm text-text-muted">
+                Unverified tips on the map. Below: nearest <em>listed</em> public cameras by
+                distance — not live feeds.
+              </p>
               <PanelErrorBoundary fallback="Map failed to render.">
                 <SightingsMap
                   key={`map-${person.id}`}
@@ -441,8 +530,20 @@ export default function PersonProfile() {
               </PanelErrorBoundary>
             </section>
 
+            <PanelErrorBoundary fallback="Camera listings failed to load.">
+              <NearestCamerasPanel personId={person.id} />
+            </PanelErrorBoundary>
+
             <section className="space-y-3">
-              <h2 className="font-display text-2xl text-navy">Live sightings heatmap</h2>
+              <h2 className="font-display text-2xl text-navy">Case activity</h2>
+              <p className="text-sm text-text-muted">
+                Tips, notifications, and status changes in order.
+              </p>
+              <CaseActivityTimeline person={person} tips={sightings} />
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="font-display text-2xl text-navy">Tip density</h2>
               <PanelErrorBoundary fallback="Heatmap failed to render.">
                 <DensityHeatMap
                   points={(sightings || []).map((s) => ({
@@ -458,22 +559,18 @@ export default function PersonProfile() {
                   lastSeenLocation={person.last_seen_location}
                   title={`Heatmap · ${person.name}`}
                 />
-                <p className="text-xs text-text-muted">
-                  Marimo data:{' '}
-                  <a
-                    className="underline"
-                    href={`${API_BASE}/analytics/heatmap/${person.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    /analytics/heatmap/{person.id}
-                  </a>
-                </p>
               </PanelErrorBoundary>
             </section>
 
             <section className="space-y-3">
               <h2 className="font-display text-2xl text-navy">Tips</h2>
+              <p className="text-sm text-text-muted">
+                Face match belongs on{' '}
+                <Link to="/lookup" className="font-semibold text-navy underline">
+                  Lookup
+                </Link>{' '}
+                (photos you provide) — not on city cameras.
+              </p>
               {sightings.length === 0 ? (
                 <p className="surface-card p-5 text-text-muted">
                   No tips yet. Be the first to{' '}
@@ -515,6 +612,16 @@ export default function PersonProfile() {
                 </ul>
               )}
             </section>
+
+            <TipForm
+              personId={person.id}
+              personName={person.name}
+              onSubmitted={() => {
+                listSightings(person.id)
+                  .then((s) => setSightings(s.sightings || []))
+                  .catch(() => {})
+              }}
+            />
           </div>
         )}
 

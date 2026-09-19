@@ -7,8 +7,9 @@ import { Link, NavLink } from 'react-router-dom'
 const LINKS = [
   { to: '/', label: 'Home', end: true },
   { to: '/lookup', label: 'Lookup' },
-  { to: '/report', label: 'Report Missing' },
-  { to: '/found', label: 'Report Found' },
+  { to: '/report-missing', label: 'Missing' },
+  { to: '/found', label: 'Found' },
+  { to: '/dashboard', label: 'Dashboard' },
 ]
 
 export default function Navbar() {

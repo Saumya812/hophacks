@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
     "jspdf": "^2.5.2",
     "leaflet": "^1.9.4",
     "leaflet.heat": "^0.2.0",

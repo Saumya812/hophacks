@@ -38,6 +38,9 @@ export const persons = table({ name: "persons" }, {
   source_agency_name: t.string().optional(),
   external_case_number: t.string().optional(),
   source_last_checked_at: t.string().optional(),
+  found_date: t.string().optional(),
+  found_notes: t.string().optional(),
+  verified_by: t.string().optional(),
 });
 
 export const sightings = table({ name: "sightings" }, {
@@ -53,6 +56,7 @@ export const sightings = table({ name: "sightings" }, {
   credibility_score: t.i32().optional(),
   family_review_flag: t.bool(),
   credibility_reasons: t.string().optional(),
+  tip_type: t.string().optional(),
 });
 
 export const case_updates = table({ name: "case_updates" }, {

@@ -1,10 +1,42 @@
 /**
- * Landing — calm centered calligraphy + wall gallery.
+ * Landing — calm calligraphy + interactive wall gallery.
  */
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { listPersons } from '../api.js'
 import WallGallery from '../components/WallGallery.jsx'
+import Modal from '../components/Modal.jsx'
 
 export default function Home() {
+  const [persons, setPersons] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [selected, setSelected] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError('')
+      try {
+        const data = await listPersons({ status: 'active' })
+        if (cancelled) return
+        setPersons(data.persons || [])
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || 'Could not load cases')
+          setPersons([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-cream">
       <section className="mx-auto flex max-w-[1100px] flex-col items-center px-4 pb-20 pt-14 text-center sm:px-6 sm:pt-20">
@@ -35,32 +67,46 @@ export default function Home() {
           </p>
         </div>
 
-        <div
-          className="fade-up mt-12 w-full sm:mt-16"
-          style={{ animationDelay: '120ms' }}
-        >
-          <WallGallery />
+        <div className="fade-up mt-12 w-full sm:mt-16" style={{ animationDelay: '120ms' }}>
+          <WallGallery
+            persons={persons}
+            onSelect={(payload) => setSelected(payload)}
+          />
         </div>
 
+        <p className="mt-5 text-xs text-text-muted">
+          {loading
+            ? 'Loading active cases…'
+            : persons.length > 0
+              ? 'Hover a frame · click to tip, share, or look up'
+              : 'Active cases appear here when published'}
+        </p>
+
+        {error && (
+          <p className="mt-2 max-w-md text-xs text-text-muted">
+            Cases couldn&apos;t load ({error}).
+          </p>
+        )}
+
         <div
-          className="fade-up mt-12 flex flex-wrap items-center justify-center gap-3"
+          className="fade-up mt-10 flex flex-wrap items-center justify-center gap-3"
           style={{ animationDelay: '220ms' }}
         >
           <Link to="/lookup" className="btn-primary">
             Search Lookup
           </Link>
           <Link to="/report" className="btn-secondary">
-            Report missing
+            Report
           </Link>
         </div>
-
-        <p className="mt-8 max-w-sm text-center text-xs text-text-muted/80">
-          Drop photos into{' '}
-          <code className="rounded bg-stone px-1.5 py-0.5 text-[11px]">public/gallery/</code>
-          {' '}as <code className="rounded bg-stone px-1.5 py-0.5 text-[11px]">01.jpg</code>–
-          <code className="rounded bg-stone px-1.5 py-0.5 text-[11px]">09.jpg</code>
-        </p>
       </section>
+
+      <Modal
+        open={Boolean(selected)}
+        person={selected?.person || null}
+        gallerySrc={selected?.gallerySrc || null}
+        onClose={() => setSelected(null)}
+      />
     </div>
   )
 }

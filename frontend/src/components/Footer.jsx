@@ -6,8 +6,10 @@ import { Link } from 'react-router-dom'
 const LINKS = [
   { to: '/', label: 'Home' },
   { to: '/lookup', label: 'Lookup' },
-  { to: '/report', label: 'Report Missing' },
-  { to: '/found', label: 'Report Found' },
+  { to: '/report-missing', label: 'Missing' },
+  { to: '/found', label: 'Found' },
+  { to: '/report', label: 'Report' },
+  { to: '/dashboard', label: 'Dashboard' },
 ]
 
 export default function Footer() {

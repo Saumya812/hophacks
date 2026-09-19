@@ -29,10 +29,11 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Allow the React frontend (Vite default :5173) to call this API in development.
+# Allow the React frontend (Vite :5173/:5174, etc.) to call this API in development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
