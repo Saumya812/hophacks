@@ -57,6 +57,8 @@ class PersonOut(BaseModel):
     status: PersonStatus
     police_report_number: Optional[str] = None
     created_at: datetime
+    ai_summary: Optional[str] = None
+    ai_summary_updated_at: Optional[datetime] = None
 
 
 class PersonListResponse(BaseModel):
@@ -98,6 +100,10 @@ class SightingOut(BaseModel):
     confidence_level: int
     submitter_email: Optional[str] = None
     created_at: datetime
+    # Optional intelligence fields (migration 002) — separate from confidence_level
+    credibility_score: Optional[int] = Field(None, ge=1, le=10)
+    family_review_flag: Optional[bool] = None
+    credibility_reasons: Optional[str] = None
 
 
 class SightingListResponse(BaseModel):

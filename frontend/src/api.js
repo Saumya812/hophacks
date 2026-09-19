@@ -91,4 +91,29 @@ export function getLookupReport(reportId) {
   return request(`/lookup/report/${reportId}`)
 }
 
+/** Face match against active case photos */
+export function matchFace(payload) {
+  return request('/faces/match', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+/** Duplicate case screening before create */
+export function checkDuplicates(payload) {
+  return request('/persons/check-duplicates', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+/** AI case summary */
+export function getCaseSummary(personId) {
+  return request(`/persons/${personId}/summary`)
+}
+
+export function refreshCaseSummary(personId) {
+  return request(`/persons/${personId}/summary/refresh`, { method: 'POST' })
+}
+
 export { API_BASE }

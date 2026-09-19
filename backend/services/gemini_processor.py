@@ -14,10 +14,10 @@ from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import google.generativeai as genai
 import httpx
 
 from config import get_settings
+from services.gemini_client import gemini_configured, get_generative_model
 
 logger = logging.getLogger(__name__)
 
@@ -130,15 +130,12 @@ def extract_sightings_with_gemini(name: str, raw_mentions: List[Dict[str, Any]])
             }
         )
 
-    key = settings.gemini_api_key
-    if not key or key.upper().startswith("YOUR_"):
+    if not gemini_configured():
         logger.info("Gemini not configured — using heuristic extractor")
         return _heuristic_extract(name, raw_mentions)
 
     try:
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+        model = get_generative_model(
             system_instruction=SYSTEM_PROMPT_TEMPLATE.format(name=name),
         )
         prompt = (

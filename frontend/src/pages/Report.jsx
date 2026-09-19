@@ -1,9 +1,10 @@
 /**
  * /report — form to create a missing-person profile.
+ * Runs duplicate detection (name + optional photo) before create.
  */
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { createPerson } from '../api.js'
+import { Link, useNavigate } from 'react-router-dom'
+import { checkDuplicates, createPerson } from '../api.js'
 
 const empty = {
   name: '',
@@ -21,10 +22,31 @@ export default function Report() {
   const navigate = useNavigate()
   const [form, setForm] = useState(empty)
   const [submitting, setSubmitting] = useState(false)
+  const [checking, setChecking] = useState(false)
   const [error, setError] = useState('')
+  const [dupes, setDupes] = useState(null)
+  const [forceCreate, setForceCreate] = useState(false)
 
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }))
+    setDupes(null)
+    setForceCreate(false)
+  }
+
+  async function create() {
+    const payload = {
+      name: form.name.trim(),
+      age: Number(form.age),
+      gender: form.gender.trim() || null,
+      last_seen_location: form.last_seen_location.trim(),
+      last_seen_date: form.last_seen_date,
+      description: form.description.trim(),
+      photo_url: form.photo_url.trim() || null,
+      police_report_number: form.police_report_number.trim() || null,
+      status: 'active',
+    }
+    const created = await createPerson(payload)
+    navigate(`/person/${created.id}`)
   }
 
   async function handleSubmit(e) {
@@ -32,22 +54,25 @@ export default function Report() {
     setSubmitting(true)
     setError('')
     try {
-      const payload = {
-        name: form.name.trim(),
-        age: Number(form.age),
-        gender: form.gender.trim() || null,
-        last_seen_location: form.last_seen_location.trim(),
-        last_seen_date: form.last_seen_date,
-        description: form.description.trim(),
-        photo_url: form.photo_url.trim() || null,
-        police_report_number: form.police_report_number.trim() || null,
-        status: 'active',
+      if (!forceCreate) {
+        setChecking(true)
+        const screen = await checkDuplicates({
+          name: form.name.trim(),
+          age: form.age ? Number(form.age) : null,
+          photo_url: form.photo_url.trim() || null,
+        })
+        setChecking(false)
+        if (screen.possible_duplicate && (screen.candidates || []).length) {
+          setDupes(screen)
+          setSubmitting(false)
+          return
+        }
       }
-      const created = await createPerson(payload)
-      navigate(`/person/${created.id}`)
+      await create()
     } catch (err) {
       setError(err.message || 'Could not create profile')
     } finally {
+      setChecking(false)
       setSubmitting(false)
     }
   }
@@ -57,7 +82,7 @@ export default function Report() {
       <div>
         <h1 className="font-display text-3xl text-navy sm:text-4xl">Report a missing person</h1>
         <p className="mt-2 text-navy/70">
-          Create a public case profile. Anyone can later submit tips on the case page.
+          Create a public case profile. We screen for possible duplicates before saving.
         </p>
       </div>
 
@@ -156,12 +181,51 @@ export default function Report() {
           />
         </div>
 
+        {dupes?.possible_duplicate && (
+          <div className="border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+            <p className="font-semibold">{dupes.message}</p>
+            <ul className="mt-2 space-y-2">
+              {(dupes.candidates || []).map((c) => (
+                <li key={c.person_id} className="flex justify-between gap-2">
+                  <Link to={`/person/${c.person_id}`} className="underline">
+                    {c.name} (score {c.combined_score})
+                  </Link>
+                  <span className="text-xs">
+                    name {c.name_similarity}%
+                    {c.photo_similarity != null ? ` · photo ${c.photo_similarity}%` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="btn-secondary mt-3"
+              disabled={submitting}
+              onClick={async () => {
+                setForceCreate(true)
+                setDupes(null)
+                setSubmitting(true)
+                setError('')
+                try {
+                  await create()
+                } catch (err) {
+                  setError(err.message || 'Could not create profile')
+                } finally {
+                  setSubmitting(false)
+                }
+              }}
+            >
+              Not a duplicate — create this profile
+            </button>
+          </div>
+        )}
+
         {error && (
           <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
         )}
 
-        <button type="submit" className="btn-primary w-full sm:w-auto" disabled={submitting}>
-          {submitting ? 'Creating…' : 'Create profile'}
+        <button type="submit" className="btn-primary w-full sm:w-auto" disabled={submitting || checking}>
+          {checking ? 'Checking duplicates…' : submitting ? 'Creating…' : forceCreate ? 'Create anyway' : 'Create profile'}
         </button>
       </form>
     </div>

@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
-from routers import lookup_router, persons, search, sightings
+from routers import intelligence, lookup_router, persons, search, sightings
 
 settings = get_settings()
 
@@ -41,6 +41,7 @@ app.include_router(persons.router)
 app.include_router(sightings.router)
 app.include_router(search.router)
 app.include_router(lookup_router.router)
+app.include_router(intelligence.router)
 
 
 @app.get("/", tags=["health"])

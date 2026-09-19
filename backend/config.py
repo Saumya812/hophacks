@@ -26,6 +26,13 @@ class Settings(BaseSettings):
 
     # Google Gemini — natural search + Smart Person Search extraction
     gemini_api_key: str = "YOUR_GEMINI_API_KEY"
+    # Optional override; empty = auto-detect via ListModels
+    gemini_model: str = ""
+
+    # Face matching — AWS Rekognition (optional)
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_region: str = "us-east-1"
 
     # Smart Person Search / lookup scrapers (all optional — skipped if unset)
     serpapi_key: str = ""

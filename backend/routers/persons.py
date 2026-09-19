@@ -19,7 +19,9 @@ router = APIRouter(tags=["persons"])
 
 def _row_to_person(row: dict) -> PersonOut:
     """Map a Supabase row dict to the PersonOut schema."""
-    return PersonOut(**row)
+    allowed = set(PersonOut.model_fields.keys())
+    cleaned = {k: v for k, v in row.items() if k in allowed}
+    return PersonOut(**cleaned)
 
 
 @router.post(

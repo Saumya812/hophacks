@@ -1,9 +1,9 @@
 /**
- * Person profile page — details, timeline, sightings map, flyer PDF.
+ * Person profile page — details, AI summary, timeline, map, flyer PDF.
  */
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getPerson, listSightings } from '../api.js'
+import { getPerson, listSightings, getCaseSummary, refreshCaseSummary } from '../api.js'
 import SightingsMap from '../components/SightingsMap.jsx'
 import FlyerButton from '../components/FlyerButton.jsx'
 
@@ -11,6 +11,8 @@ export default function PersonProfile() {
   const { id } = useParams()
   const [person, setPerson] = useState(null)
   const [sightings, setSightings] = useState([])
+  const [summary, setSummary] = useState(null)
+  const [summaryBusy, setSummaryBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -24,6 +26,14 @@ export default function PersonProfile() {
         if (cancelled) return
         setPerson(p)
         setSightings(s.sightings || [])
+        // Load / generate summary in background
+        getCaseSummary(id)
+          .then((sum) => {
+            if (!cancelled) setSummary(sum)
+          })
+          .catch(() => {
+            /* summary is optional */
+          })
       } catch (err) {
         if (!cancelled) setError(err.message || 'Failed to load profile')
       } finally {
@@ -36,15 +46,26 @@ export default function PersonProfile() {
     }
   }, [id])
 
+  async function onRefreshSummary() {
+    setSummaryBusy(true)
+    try {
+      const sum = await refreshCaseSummary(id)
+      setSummary(sum)
+    } catch (err) {
+      setError(err.message || 'Could not refresh summary')
+    } finally {
+      setSummaryBusy(false)
+    }
+  }
+
   if (loading) return <p className="text-navy/60">Loading profile…</p>
-  if (error) {
+  if (error && !person) {
     return (
       <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
     )
   }
   if (!person) return null
 
-  // Timeline: last-seen event + sightings newest-first already from API
   const timeline = [
     {
       id: 'last-seen',
@@ -55,10 +76,14 @@ export default function PersonProfile() {
     },
     ...sightings.map((s) => ({
       id: s.id,
-      label: `Sighting (confidence ${s.confidence_level}/5)`,
+      label: s.family_review_flag
+        ? `Sighting · credibility ${s.credibility_score ?? '—'}/10 · family review`
+        : `Sighting · credibility ${s.credibility_score ?? '—'}/10 · reporter ${s.confidence_level}/5`,
       when: s.date_time,
       text: s.description,
       kind: 'sighting',
+      high: Boolean(s.family_review_flag),
+      reasons: s.credibility_reasons,
     })),
   ]
 
@@ -119,6 +144,38 @@ export default function PersonProfile() {
         </div>
       </div>
 
+      {/* AI Case Summarizer */}
+      <section className="surface-panel p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-navy/45">
+              AI case summary
+            </p>
+            <h2 className="font-display text-2xl text-navy">Plain-English brief</h2>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onRefreshSummary}
+            disabled={summaryBusy}
+          >
+            {summaryBusy ? 'Updating…' : 'Refresh summary'}
+          </button>
+        </div>
+        <p className="text-sm leading-relaxed text-navy/80">
+          {summary?.summary ||
+            person.ai_summary ||
+            'Summary will appear after tips are available, or click Refresh.'}
+        </p>
+        {summary && (
+          <p className="mt-2 text-xs text-navy/45">
+            Engine: {summary.engine} · based on {summary.sighting_count} tip
+            {summary.sighting_count === 1 ? '' : 's'}
+            {summary.generated_at ? ` · ${new Date(summary.generated_at).toLocaleString()}` : ''}
+          </p>
+        )}
+      </section>
+
       <section className="space-y-3">
         <h2 className="font-display text-2xl text-navy">Sightings map</h2>
         <SightingsMap
@@ -137,7 +194,11 @@ export default function PersonProfile() {
               <li key={item.id} className="relative pb-5">
                 <span
                   className={`absolute -left-[1.35rem] top-1.5 h-2.5 w-2.5 rounded-full ${
-                    item.kind === 'last' ? 'bg-red-600' : 'bg-blue-600'
+                    item.kind === 'last'
+                      ? 'bg-red-600'
+                      : item.high
+                        ? 'bg-emerald-600'
+                        : 'bg-blue-600'
                   }`}
                 />
                 <p className="text-xs font-semibold uppercase tracking-wide text-navy/50">
@@ -147,6 +208,9 @@ export default function PersonProfile() {
                   {item.when ? new Date(item.when).toLocaleString() : '—'}
                 </p>
                 <p className="mt-1 text-navy/85">{item.text}</p>
+                {item.reasons && (
+                  <p className="mt-1 text-xs text-navy/50">{item.reasons}</p>
+                )}
               </li>
             ))}
           </ol>

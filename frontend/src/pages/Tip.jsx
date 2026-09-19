@@ -191,7 +191,9 @@ export default function Tip() {
         </div>
 
         <div>
-          <label className="label-field" htmlFor="submitter_email">Your email (optional)</label>
+          <label className="label-field" htmlFor="submitter_email">
+            Email for follow-up (optional — leave blank to stay anonymous)
+          </label>
           <input
             id="submitter_email"
             type="email"
@@ -199,6 +201,9 @@ export default function Tip() {
             value={form.submitter_email}
             onChange={(e) => update('submitter_email', e.target.value)}
           />
+          <p className="mt-1 text-xs text-navy/50">
+            Tips can be submitted anonymously. Email is only used if investigators need to follow up.
+          </p>
         </div>
 
         {error && (

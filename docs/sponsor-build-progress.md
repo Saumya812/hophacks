@@ -20,7 +20,22 @@ This file tracks sponsor-aware phases. Later phases must be requested explicitly
 | Credentials verified safely (no secret printing) | **Met** — presence + live probes only |
 | App preserved (no replacement scaffold) | **Met** |
 
-**S0 STOP.** No S1+ implementation in this turn.
+**S0 STOP.** No S1+ implementation in that turn.
+
+### Post-S0 advanced AI batch (2026-09-19, separate request)
+
+Implemented (not sponsor Spacetime/Tiger/etc.):
+
+| Feature | Status |
+|---------|--------|
+| Face recognition matching | Done — `POST /faces/match` + homepage panel (Rekognition / DeepFace / Gemini Vision) |
+| AI case summarizer | Done — `GET/POST /persons/{id}/summary` on profile |
+| Duplicate detection | Done — `POST /persons/check-duplicates` on `/report` |
+| Sighting credibility scorer | Done — scored on tip create; shown on timeline |
+| Gemini model auto-resolve | Done — fixes prior `gemini-1.5-flash` 404 |
+| Migration `db/migrations/002_intelligence.sql` | Added — run in Supabase |
+
+Still remaining from the large advanced-feature list: NL alerts, marimo/Spacetime viz, social kit, zip alerts, tip clustering, ElevenLabs calls, Backboard memory, Snowflake patterns, etc.
 
 ---
 

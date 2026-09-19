@@ -11,13 +11,20 @@ from fastapi import APIRouter, HTTPException, status
 
 from database import get_supabase
 from schemas import SightingCreate, SightingListResponse, SightingOut
+from services.intelligence import score_sighting_credibility
 
 router = APIRouter(tags=["sightings"])
 
 
 def _row_to_sighting(row: dict) -> SightingOut:
     """Map a Supabase row dict to the SightingOut schema."""
-    return SightingOut(**row)
+    # Drop unknown keys so pre-migration rows still validate
+    allowed = set(SightingOut.model_fields.keys())
+    cleaned = {k: v for k, v in row.items() if k in allowed}
+    return SightingOut(**cleaned)
+
+
+_row_to_sighting_flexible = _row_to_sighting
 
 
 def _ensure_person_exists(person_id: UUID) -> None:
@@ -59,7 +66,32 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
     if data.get("submitter_email") is None:
         data.pop("submitter_email", None)
 
-    result = supabase.table("sightings").insert(data).execute()
+    # AI / heuristic credibility score (1–10), separate from reporter confidence_level
+    scored = score_sighting_credibility(
+        description=payload.description,
+        location_lat=payload.location_lat,
+        location_lng=payload.location_lng,
+        date_time=payload.date_time,
+        person_id=str(person_id),
+    )
+    data["credibility_score"] = scored["credibility_score"]
+    data["family_review_flag"] = scored["family_review_flag"]
+    data["credibility_reasons"] = "; ".join(scored.get("reasons") or [])
+
+    try:
+        result = supabase.table("sightings").insert(data).execute()
+    except Exception:
+        # Columns may be missing before migration 002 — insert without them
+        data.pop("credibility_score", None)
+        data.pop("family_review_flag", None)
+        data.pop("credibility_reasons", None)
+        result = supabase.table("sightings").insert(data).execute()
+        if result.data:
+            row = dict(result.data[0])
+            row.update(scored)
+            row["credibility_reasons"] = "; ".join(scored.get("reasons") or [])
+            return _row_to_sighting_flexible(row)
+        raise
 
     if not result.data:
         raise HTTPException(
@@ -67,7 +99,11 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
             detail="Failed to create sighting",
         )
 
-    return _row_to_sighting(result.data[0])
+    row = dict(result.data[0])
+    # Ensure response includes scoring even if DB omitted defaults
+    row.setdefault("credibility_score", scored["credibility_score"])
+    row.setdefault("family_review_flag", scored["family_review_flag"])
+    return _row_to_sighting_flexible(row)
 
 
 @router.get(

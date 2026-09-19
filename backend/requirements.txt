@@ -10,3 +10,6 @@ httpx==0.28.1
 google-generativeai==0.8.3
 python-multipart==0.0.20
 reportlab==4.2.5
+# Optional face engines (install if you want local/AWS matching)
+# deepface==0.0.93
+# boto3==1.35.99

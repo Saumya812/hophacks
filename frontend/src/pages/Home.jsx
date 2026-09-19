@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listPersons, naturalSearch } from '../api.js'
 import PersonCard from '../components/PersonCard.jsx'
+import FaceMatchPanel from '../components/FaceMatchPanel.jsx'
 
 export default function Home() {
   const [persons, setPersons] = useState([])
@@ -157,6 +158,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <FaceMatchPanel />
 
       {/* Search */}
       <section className="surface-panel p-5 sm:p-6">

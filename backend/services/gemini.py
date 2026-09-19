@@ -12,10 +12,9 @@ import json
 import re
 from typing import Any, Dict
 
-import google.generativeai as genai
-
 from config import get_settings
 from schemas import NaturalSearchFilters
+from services.gemini_client import get_generative_model
 
 # Prompt that forces Gemini to reply with JSON matching NaturalSearchFilters.
 _SYSTEM_PROMPT = """
@@ -79,13 +78,7 @@ def query_to_filters(query: str) -> NaturalSearchFilters:
             "GEMINI_API_KEY is not configured. Set it in backend/.env"
         )
 
-    genai.configure(api_key=settings.gemini_api_key)
-
-    # gemini-1.5-flash is fast/cheap enough for filter extraction
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        system_instruction=_SYSTEM_PROMPT,
-    )
+    model = get_generative_model(system_instruction=_SYSTEM_PROMPT)
 
     response = model.generate_content(
         f'User search query: """{query}"""',
