@@ -208,6 +208,45 @@ def points_from_sighting_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, 
     return points
 
 
+def anonymized_tip_points(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Geographic tip density only — no names, descriptions, emails, or tip ids.
+    Safe for citywide civic / volunteer coordination maps.
+    """
+    points: List[Dict[str, Any]] = []
+    for r in rows:
+        try:
+            lat = float(r["location_lat"])
+            lng = float(r["location_lng"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if abs(lat) > 90 or abs(lng) > 180:
+            continue
+        cred = r.get("credibility_score")
+        weight = 1.0
+        if cred is not None:
+            try:
+                weight = max(1.0, min(float(cred) / 3.0, 5.0))
+            except (TypeError, ValueError):
+                weight = 1.0
+        points.append({"lat": lat, "lng": lng, "weight": weight})
+    return points
+
+
+# Approximate Baltimore metro box (WGS84) for civic-map filtering
+BALTIMORE_BBOX = {
+    "lat_min": 39.10,
+    "lat_max": 39.45,
+    "lng_min": -76.85,
+    "lng_max": -76.35,
+}
+
+
+def in_baltimore_bbox(lat: float, lng: float) -> bool:
+    b = BALTIMORE_BBOX
+    return b["lat_min"] <= lat <= b["lat_max"] and b["lng_min"] <= lng <= b["lng_max"]
+
+
 def points_from_lookup_locations(locations: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Map lookup geocode aggregates → heatmap points."""
     points: List[Dict[str, Any]] = []

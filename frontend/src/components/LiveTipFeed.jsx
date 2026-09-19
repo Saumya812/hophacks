@@ -28,12 +28,22 @@ export default function LiveTipFeed() {
           if (!alive) { conn.disconnect(); return }
           const refresh = () => {
             if (!alive) return
-            setTips([...conn.db.caseActivity.iter()]
-              .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))
-              .slice(0, 10).map(row => ({
-                id: row.id, person_id: row.personId, person_name: row.personName,
-                created_at: row.createdAt, snippet: 'New community tip submitted',
-              })))
+            const rows = [...conn.db.caseActivity.iter()]
+              .filter((row) => (row.kind || '') === 'tip_submitted')
+              .sort((a, b) => {
+                const ca = a.createdAt || ''
+                const cb = b.createdAt || ''
+                return cb.localeCompare(ca) || String(a.id).localeCompare(String(b.id))
+              })
+              .slice(0, 10)
+              .map((row) => ({
+                id: row.id,
+                person_id: row.personId,
+                person_name: row.personName,
+                created_at: row.createdAt,
+                snippet: 'New community tip submitted',
+              }))
+            setTips(rows)
           }
           conn.db.caseActivity.onInsert(refresh)
           conn.db.caseActivity.onUpdate(refresh)

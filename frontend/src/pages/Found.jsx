@@ -1,11 +1,13 @@
 /**
  * /found — resolved / reunited cases (status = found).
- * Uses existing listPersons API — no direct Supabase client.
+ * Additive: realtime updates + verified-by-authorities badge.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listPersons } from '../api.js'
+import { listPersons, getPerson } from '../api.js'
 import { formatEventDate } from '../lib/caseHelpers.js'
+import { showToast } from '../components/Toast.jsx'
+import { useCaseActivityLive } from '../hooks/useCaseActivityLive.js'
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -31,7 +33,7 @@ function inThisYear(iso) {
 }
 
 function foundDate(p) {
-  return p.found_at || p.last_verified_at || p.created_at || null
+  return p.found_date || p.found_at || p.last_verified_at || p.created_at || null
 }
 
 export default function Found() {
@@ -60,6 +62,25 @@ export default function Found() {
       cancelled = true
     }
   }, [])
+
+  useCaseActivityLive({
+    onAnyFound: (row) => {
+      const pid = row.personId || row.person_id
+      if (!pid) return
+      getPerson(pid)
+        .then((p) => {
+          if ((p.status || '').toLowerCase() !== 'found') return
+          setPersons((prev) => {
+            if (prev.some((x) => x.id === p.id)) {
+              return prev.map((x) => (x.id === p.id ? { ...x, ...p } : x))
+            }
+            return [p, ...prev]
+          })
+          showToast(`${p.name} has been found safe`, 'success')
+        })
+        .catch(() => {})
+    },
+  })
 
   const yearCount = useMemo(
     () => persons.filter((p) => inThisYear(foundDate(p))).length,
@@ -136,18 +157,6 @@ export default function Found() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-4 py-20 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center text-navy">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
-                <path
-                  d="M7 12.5l3 3 7-7"
-                  stroke="currentColor"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
             <h3 className="font-display text-2xl text-navy">No resolved cases yet</h3>
             <p className="mx-auto mt-2 max-w-md text-base text-text-muted">
               When missing persons are found and marked safe, they will appear here.
@@ -160,18 +169,13 @@ export default function Found() {
           >
             {filtered.map((p) => {
               const fd = foundDate(p)
+              const verified =
+                p.verified_by === 'law_enforcement' || Boolean(p.verified_police_report)
               return (
-                <article
-                  key={p.id}
-                  className="card-interactive overflow-hidden"
-                >
+                <article key={p.id} className="card-interactive overflow-hidden">
                   <div className="relative h-60 overflow-hidden bg-misty/40">
                     {p.photo_url ? (
-                      <img
-                        src={p.photo_url}
-                        alt={p.name}
-                        className="h-full w-full object-cover"
-                      />
+                      <img src={p.photo_url} alt={p.name} className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center font-display text-5xl text-navy/25">
                         {(p.name || '?').charAt(0)}
@@ -189,6 +193,22 @@ export default function Found() {
                       >
                         Found safe
                       </p>
+                      {verified && (
+                        <p
+                          className="mt-1 inline-flex items-center gap-1 rounded px-2 py-0.5"
+                          style={{
+                            background: '#1a2b4a',
+                            color: '#c9a962',
+                            fontFamily: 'Inter, system-ui',
+                            fontSize: '10px',
+                            letterSpacing: '1px',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          <span aria-hidden>🛡</span>
+                          Verified by Law Enforcement
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="p-5">
@@ -207,7 +227,9 @@ export default function Found() {
                       <div className="flex justify-between gap-2">
                         <dt className="text-text-muted">Found on:</dt>
                         <dd className="text-success">
-                          {formatEventDate(fd) || formatEventDate(String(fd || '').slice(0, 10)) || 'Unknown'}
+                          {formatEventDate(fd) ||
+                            formatEventDate(String(fd || '').slice(0, 10)) ||
+                            'Unknown'}
                         </dd>
                       </div>
                     </dl>

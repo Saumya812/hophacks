@@ -26,11 +26,21 @@ from services.advanced import (
 from services.backboard_memory import forget_search, recall_search, remember_search
 from services.elevenlabs_tts import CACHE_DIR, synthesize_speech
 from services.heatmap import (
+    BALTIMORE_BBOX,
+    anonymized_tip_points,
     build_folium_heatmap_html,
+    in_baltimore_bbox,
     points_from_lookup_locations,
     points_from_sighting_rows,
 )
 from routers.persons import _row_to_person
+from services.baltimore_cameras import (
+    CAMERAS_URL,
+    DISCLAIMER as BALTIMORE_DISCLAIMER,
+    HOW_TO_USE as BALTIMORE_HOW_TO,
+    fetch_cameras,
+    nearest_to_point,
+)
 from services.geocode import geocode_query
 from services.owner_auth import require_owner
 from pathlib import Path
@@ -145,6 +155,219 @@ def case_heatmap_data(person_id: UUID):
         "provenance": "community_tips",
         "marimo": "notebooks/sightings_heatmap.py",
         "embed_path": f"/analytics/heatmap/{person_id}/embed",
+    }
+
+
+@router.get("/analytics/baltimore/civic")
+def baltimore_civic_meta():
+    """
+    Metadata for the Baltimore civic-context marimo story.
+    Does not invent case facts — cameras are public infrastructure points.
+    """
+    return {
+        "title": "Baltimore civic context",
+        "story": (
+            "Layer 1: anonymized tip density across all active FindMyPal cases. "
+            "Layer 2: public CitiWatch camera locations. "
+            "Compare clusters vs cameras for volunteer search coordination — "
+            "not investigation proof."
+        ),
+        "disclaimer": (
+            "Camera locations are public infrastructure, not live video. "
+            "Tip layer is lat/lng density only (no names). Community tips are unverified. "
+            "Gaps in camera coverage near tip clusters suggest where volunteers may focus."
+        ),
+        "marimo_notebook": "notebooks/baltimore_civic_story.py",
+        "run": "marimo run notebooks/baltimore_civic_story.py",
+        "edit": "marimo edit notebooks/baltimore_civic_story.py",
+        "open_data": {
+            "citiwatch_cameras": (
+                "https://geodata.baltimorecity.gov/egis/rest/services/"
+                "CityView/CitiWatchCamera/FeatureServer/0"
+            ),
+            "portal": "https://data.baltimorecity.gov/datasets/baltimore::citiwatch-camera-locations",
+        },
+        "tip_clusters": "/analytics/baltimore/tip-clusters",
+        "tip_overlay": "/analytics/heatmap/{person_id}",
+        "cameras_proxy": "/analytics/baltimore/cameras",
+    }
+
+
+@router.get("/analytics/baltimore/tip-clusters")
+def baltimore_tip_clusters(
+    baltimore_only: bool = Query(
+        True,
+        description="If true, keep only tips inside an approximate Baltimore metro box",
+    ),
+):
+    """
+    Layer 1 for civic maps: anonymized tip density across all *active* cases.
+
+    Returns lat/lng/weight only — no names, descriptions, emails, or tip ids.
+    """
+    sb = get_database()
+    active = (
+        sb.table("persons")
+        .select("id")
+        .eq("status", "active")
+        .execute()
+        .data
+        or []
+    )
+    active_ids = [str(p["id"]) for p in active if p.get("id")]
+    if not active_ids:
+        return {
+            "count": 0,
+            "points": [],
+            "active_cases": 0,
+            "baltimore_only": baltimore_only,
+            "bbox": BALTIMORE_BBOX,
+            "provenance": "community_tips_active_cases_anonymized",
+            "privacy": "no names, descriptions, emails, or tip ids",
+            "marimo": "notebooks/baltimore_civic_story.py",
+        }
+
+    # Supabase .in_ with many UUIDs is fine for hackathon scale
+    rows = (
+        sb.table("sightings")
+        .select("location_lat,location_lng,credibility_score,person_id")
+        .in_("person_id", active_ids)
+        .execute()
+        .data
+        or []
+    )
+
+    all_points = anonymized_tip_points(rows)
+    if baltimore_only:
+        points = [
+            p
+            for p in all_points
+            if in_baltimore_bbox(float(p["lat"]), float(p["lng"]))
+        ]
+    else:
+        points = all_points
+
+    return {
+        "count": len(points),
+        "count_all_active_tips": len(all_points),
+        "points": points,
+        "active_cases": len(active_ids),
+        "baltimore_only": baltimore_only,
+        "bbox": BALTIMORE_BBOX if baltimore_only else None,
+        "provenance": "community_tips_active_cases_anonymized",
+        "privacy": "no names, descriptions, emails, or tip ids",
+        "marimo": "notebooks/baltimore_civic_story.py",
+    }
+
+
+@router.get("/analytics/baltimore/cameras")
+def baltimore_citiwatch_cameras(limit: int = Query(500, ge=1, le=2000)):
+    """
+    Proxy Baltimore CitiWatch camera points (WGS84) for notebooks / demos.
+    Locations only — not live video.
+    """
+    try:
+        cameras = fetch_cameras(limit=limit)
+    except Exception as exc:
+        raise HTTPException(
+            503,
+            f"Baltimore GIS unavailable ({exc}). Try the marimo notebook later.",
+        ) from exc
+    return {
+        "count": len(cameras),
+        "cameras": cameras,
+        "provenance": "baltimore_citiwatch_feature_server",
+        "source": CAMERAS_URL,
+        "disclaimer": BALTIMORE_DISCLAIMER,
+        "marimo": "notebooks/baltimore_civic_story.py",
+    }
+
+
+@router.get("/analytics/baltimore/nearest/{person_id}")
+def baltimore_nearest_for_case(
+    person_id: UUID,
+    k: int = Query(3, ge=1, le=5),
+    max_m: float = Query(2500, ge=200, le=8000),
+):
+    """
+    Soft suggestions: nearest listed CitiWatch cameras to each tip / last-seen.
+    Distance-based only — not AI watching feeds or face match on CCTV.
+    """
+    try:
+        cameras = fetch_cameras(limit=1200)
+    except Exception as exc:
+        raise HTTPException(503, f"Baltimore GIS unavailable ({exc})") from exc
+
+    sb = get_database()
+    person_rows = (
+        sb.table("persons")
+        .select("id,name,last_seen_location,last_seen_date")
+        .eq("id", str(person_id))
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not person_rows:
+        raise HTTPException(404, "Person not found")
+    person = person_rows[0]
+
+    tips_rows = (
+        sb.table("sightings")
+        .select("id,location_lat,location_lng,description,date_time")
+        .eq("person_id", str(person_id))
+        .execute()
+        .data
+        or []
+    )
+
+    tip_results = []
+    for row in tips_rows:
+        try:
+            lat = float(row.get("location_lat"))
+            lng = float(row.get("location_lng"))
+        except (TypeError, ValueError):
+            continue
+        tip_results.append(
+            {
+                "tip_id": row.get("id"),
+                "lat": lat,
+                "lng": lng,
+                "date_time": row.get("date_time"),
+                "snippet": (row.get("description") or "")[:160],
+                "nearest_cameras": nearest_to_point(lat, lng, cameras, k=k, max_m=max_m),
+            }
+        )
+
+    last_seen_block = None
+    loc = (person.get("last_seen_location") or "").strip()
+    if loc:
+        geo = geocode_query(loc)
+        if geo and geo.get("lat") is not None and geo.get("lng") is not None:
+            lat, lng = float(geo["lat"]), float(geo["lng"])
+            last_seen_block = {
+                "query": loc,
+                "lat": lat,
+                "lng": lng,
+                "note": "Geocoded last-seen place is approximate (often city/neighborhood level).",
+                "nearest_cameras": nearest_to_point(lat, lng, cameras, k=k, max_m=max_m),
+            }
+
+    return {
+        "person_id": str(person_id),
+        "person_name": person.get("name"),
+        "camera_catalog_count": len(cameras),
+        "disclaimer": BALTIMORE_DISCLAIMER,
+        "how_to_use": BALTIMORE_HOW_TO,
+        "last_seen": last_seen_block,
+        "tips": tip_results,
+        "tips_with_cameras": sum(1 for t in tip_results if t["nearest_cameras"]),
+        "provenance": "baltimore_citiwatch_locations + community_tips",
+        "marimo": "notebooks/baltimore_civic_story.py",
+        "face_match_note": (
+            "Face matching is only available on Lookup / tip photos you provide — "
+            "not on city camera feeds."
+        ),
     }
 
 

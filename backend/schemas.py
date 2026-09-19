@@ -85,6 +85,9 @@ class PersonOut(BaseModel):
     last_verified_at: Optional[datetime] = None
     found_at: Optional[datetime] = None
     found_message: Optional[str] = None
+    found_date: Optional[datetime] = None
+    found_notes: Optional[str] = None
+    verified_by: Optional[str] = None
     watchers_count: Optional[int] = None
     shares_count: Optional[int] = None
     tips_count: Optional[int] = None
@@ -125,6 +128,7 @@ class SightingCreate(BaseModel):
     )
     confidence_level: int = Field(3, ge=1, le=5, examples=[4])
     submitter_email: Optional[EmailStr] = Field(None, examples=["tipster@example.com"])
+    tip_type: Optional[str] = Field(None, max_length=64, examples=["saw_person"])
 
 
 class SightingOut(BaseModel):
@@ -138,6 +142,7 @@ class SightingOut(BaseModel):
     description: str
     confidence_level: int
     created_at: datetime
+    tip_type: Optional[str] = None
     # Optional intelligence fields (migration 002) — separate from confidence_level
     credibility_score: Optional[int] = Field(None, ge=1, le=10)
     family_review_flag: Optional[bool] = None

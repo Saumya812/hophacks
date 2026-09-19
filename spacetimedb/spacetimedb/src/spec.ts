@@ -183,6 +183,21 @@ export const specs = {
       "type": "string",
       "nullable": true,
       "sql_type": "DATE"
+    },
+    "found_date": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TIMESTAMPTZ"
+    },
+    "found_notes": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "verified_by": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
     }
   },
   "sightings": {
@@ -249,6 +264,12 @@ export const specs = {
       "type": "string",
       "nullable": true,
       "sql_type": "TEXT"
+    },
+    "tip_type": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT",
+      "default": "general"
     }
   },
   "case_updates": {

@@ -217,6 +217,18 @@ export const execute_query = spacetimedb.procedure({ request: t.string() }, t.st
         if (!tx.db.case_activity.id.find(row.id)) tx.db.case_activity.insert({ id: row.id, person_id: row.person_id, person_name: person?.name || 'Case', kind: 'tip_submitted', created_at: row.created_at });
       }
       if (q.table === 'sightings' && op === 'delete') tx.db.case_activity.id.delete(row.id);
+      if (q.table === 'persons' && ['update', 'upsert'].includes(op) && row.status === 'found') {
+        const eid = `found-${row.id}`;
+        if (!tx.db.case_activity.id.find(eid)) {
+          tx.db.case_activity.insert({
+            id: eid,
+            person_id: row.id,
+            person_name: row.name || 'Case',
+            kind: 'verified_found',
+            created_at: row.found_at || row.found_date || now,
+          });
+        }
+      }
     }
     if (q.table === 'persons' && op !== 'delete') output = output.map(r => decode('persons', db.persons.id.find(r.id)));
     const result = JSON.stringify({ data: output, count: output.length });

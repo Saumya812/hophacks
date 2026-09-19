@@ -39,7 +39,7 @@ def _post_sighting_side_effects(database, person_id, payload, row: dict) -> None
     try:
         person = (
             database.table("persons")
-            .select("name")
+            .select("id,name,age,last_seen_location,contact_email")
             .eq("id", str(person_id))
             .limit(1)
             .execute()
@@ -61,6 +61,29 @@ def _post_sighting_side_effects(database, person_id, payload, row: dict) -> None
         )
         if cluster:
             row["cluster_alert"] = cluster
+
+        # Additive: EmailJS police / family notify (no-op if env unset)
+        try:
+            from notifications import (
+                notify_family_new_tip_sync,
+                notify_police_new_tip_sync,
+            )
+
+            tip_payload = {
+                "tip_type": row.get("tip_type") or "general",
+                "location": f"{payload.location_lat}, {payload.location_lng}",
+                "seen_at": str(payload.date_time),
+                "date_time": str(payload.date_time),
+                "confidence_level": payload.confidence_level,
+                "description": payload.description,
+                "submitter_email": getattr(payload, "submitter_email", None)
+                or row.get("submitter_email"),
+            }
+            police_ok = notify_police_new_tip_sync(person, tip_payload)
+            notify_family_new_tip_sync(person, tip_payload)
+            row["police_notified"] = bool(police_ok)
+        except Exception:
+            row["police_notified"] = False
     except Exception:
         pass
 
@@ -103,6 +126,10 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
     # EmailStr serializes fine via model_dump; coerce None explicitly
     if data.get("submitter_email") is None:
         data.pop("submitter_email", None)
+    if not (data.get("tip_type") or "").strip():
+        data.pop("tip_type", None)
+    else:
+        data["tip_type"] = str(data["tip_type"]).strip()
 
     # AI / heuristic credibility score (1–10), separate from reporter confidence_level
     scored = score_sighting_credibility(

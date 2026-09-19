@@ -11,6 +11,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel, Field
 
 from database import get_database
 from schemas import PersonCreate, PersonListResponse, PersonOut
@@ -18,6 +19,15 @@ from services.owner_auth import issue_owner_token, remember_token
 from services.advanced import notify_zip_alerts_for_new_case, queue_email
 
 router = APIRouter(tags=["persons"])
+
+
+class VerifyFoundRequest(BaseModel):
+    """Police verification payload for marking a case found."""
+
+    code: str = Field(..., min_length=3, max_length=128)
+    notes: str = Field("", max_length=4000)
+    found_location: str = Field("", max_length=500)
+    found_date: str = Field("", max_length=64)
 
 
 def _escape_ilike(term: str) -> str:
@@ -178,3 +188,65 @@ def get_person(person_id: UUID) -> PersonOut:
             detail=f"Person {person_id} not found",
         )
     return _row_to_person(result.data[0], public=True)
+
+
+@router.post(
+    "/persons/{person_id}/verify-found",
+    summary="Police: mark person found (verification code required)",
+)
+def verify_person_found(person_id: UUID, verification: VerifyFoundRequest):
+    """
+    Law-enforcement path to mark a person as found.
+    Demo: any code starting with POLICE- is accepted.
+    Additive — does not replace owner POST /persons/{id}/found.
+    """
+    if not verification.code.startswith("POLICE-"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid verification code",
+        )
+
+    sb = get_database()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    notes = (verification.notes or "").strip()
+    if verification.found_location:
+        notes = (
+            f"{notes}\nFound location: {verification.found_location}".strip()
+            if notes
+            else f"Found location: {verification.found_location}"
+        )
+
+    update = {
+        "status": "found",
+        "found_at": verification.found_date or now_iso,
+        "found_message": notes or "Verified found by law enforcement",
+        "found_date": verification.found_date or now_iso,
+        "found_notes": notes or None,
+        "verified_by": "law_enforcement",
+    }
+
+    try:
+        result = (
+            sb.table("persons").update(update).eq("id", str(person_id)).execute()
+        )
+    except Exception:
+        # Pre-schema_additions: drop newer columns and retry
+        update.pop("found_date", None)
+        update.pop("found_notes", None)
+        update.pop("verified_by", None)
+        result = (
+            sb.table("persons").update(update).eq("id", str(person_id)).execute()
+        )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Person not found",
+        )
+
+    return {
+        "success": True,
+        "message": "Case marked as resolved",
+        "person_id": str(person_id),
+        "person": _row_to_person(result.data[0], public=True),
+    }

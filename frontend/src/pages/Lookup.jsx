@@ -143,10 +143,10 @@ export default function Lookup() {
           </p>
           <h1 className="mt-2 font-display text-3xl text-navy sm:text-4xl">Person Lookup</h1>
           <p className="mt-2 text-sm leading-relaxed text-text-muted sm:text-base">
-            Enter a first and last name. A photo is optional and is used for the report header
-            and visual matching when available. FindMyPal searches publicly indexed web and social
-            sources, then compiles a structured sighting brief. Photos are kept only for this
-            session.
+            Enter a first and last name. An optional photo enables face match against tip photos
+            and public web results you already have access to — not city camera feeds. FindMyPal
+            searches publicly indexed sources and compiles a sighting brief. Photos stay in this
+            session only.
           </p>
         </div>
 

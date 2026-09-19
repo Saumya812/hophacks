@@ -144,11 +144,25 @@ Set `VITE_API_BASE=http://127.0.0.1:8000` in `frontend/.env` if needed.
 ```bash
 cd backend
 .venv\Scripts\activate
-pip install marimo folium   # if not already in requirements
-marimo edit ../notebooks/sightings_heatmap.py
+pip install marimo pandas folium httpx
 ```
 
-Notebooks call the FastAPI heatmap / activity endpoints above.
+**Baltimore civic story (sponsor viz):**
+```bash
+marimo run ../notebooks/baltimore_civic_story.py
+```
+Loads public CitiWatch camera locations and optionally overlays FindMyPal tip heatmaps.
+Also linked from the in-app **Dashboard**.
+
+**Per-case tip heatmap:**
+```bash
+marimo run ../notebooks/sightings_heatmap.py
+```
+
+API helpers:
+- `GET /analytics/baltimore/civic` — notebook metadata
+- `GET /analytics/baltimore/cameras` — camera points proxy
+- `GET /analytics/heatmap/{id}` — tip points for overlay
 
 ---
 
