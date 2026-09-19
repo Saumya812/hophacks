@@ -17,9 +17,9 @@ export default function AlertsAndMemoryPanel() {
 
   return (
     <section className="grid gap-4 lg:grid-cols-2">
-      <div className="surface-panel space-y-3 p-5">
+      <div className="surface-card space-y-3 p-5">
         <h2 className="font-display text-2xl text-navy">Natural-language alerts</h2>
-        <p className="text-sm text-navy/60">
+        <p className="text-sm text-text-muted">
           Example: “Alert me if anyone reports seeing a young woman with red hair near Johns Hopkins campus”
         </p>
         <input
@@ -50,9 +50,9 @@ export default function AlertsAndMemoryPanel() {
         </button>
       </div>
 
-      <div className="surface-panel space-y-3 p-5">
+      <div className="surface-card space-y-3 p-5">
         <h2 className="font-display text-2xl text-navy">Zip code alerts</h2>
-        <p className="text-sm text-navy/60">Get notified when new cases appear near your zip.</p>
+        <p className="text-sm text-text-muted">Get notified when new cases appear near your zip.</p>
         <input
           className="input-field"
           placeholder="Email"

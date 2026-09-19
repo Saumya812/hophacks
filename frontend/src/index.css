@@ -2,13 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global base styles — navy / white FindMyPal theme */
 :root {
   color-scheme: light;
   --navy: #1a2b4a;
-  --navy-deep: #121e33;
-  --paper: #f4f6f9;
-  --accent-line: #2f4568;
+  --navy-light: #243860;
+  --navy-dark: #111d33;
+  --cream: #f8f6f1;
+  --white: #ffffff;
+  --accent: #c4973a;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --text-primary: #111827;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
@@ -19,31 +29,9 @@ body,
 
 body {
   margin: 0;
-  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
-  color: var(--navy);
-  background-color: var(--paper);
-  background-image:
-    radial-gradient(ellipse 90% 55% at 0% -5%, rgba(26, 43, 74, 0.08) 0%, transparent 55%),
-    radial-gradient(ellipse 70% 45% at 100% 5%, rgba(77, 103, 134, 0.1) 0%, transparent 50%),
-    linear-gradient(180deg, #ffffff 0%, var(--paper) 42%, #eef1f5 100%);
-  background-attachment: fixed;
-}
-
-/* Soft diagonal hatch for depth (very low contrast) */
-body::before {
-  content: '';
-  pointer-events: none;
-  position: fixed;
-  inset: 0;
-  opacity: 0.035;
-  background-image: repeating-linear-gradient(
-    -18deg,
-    #1a2b4a 0,
-    #1a2b4a 1px,
-    transparent 1px,
-    transparent 14px
-  );
-  z-index: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--text-primary);
+  background-color: var(--cream);
 }
 
 #root {
@@ -51,7 +39,6 @@ body::before {
   z-index: 1;
 }
 
-/* Leaflet needs an explicit height on its container */
 .leaflet-container {
   width: 100%;
   height: 100%;
@@ -59,32 +46,208 @@ body::before {
   z-index: 0;
 }
 
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes gold-sweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes ring-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(196, 151, 58, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(196, 151, 58, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(196, 151, 58, 0);
+  }
+}
+
 @layer components {
+  .font-display {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-sm bg-navy px-5 py-2.5
-      text-sm font-semibold tracking-wide text-white transition-colors duration-150
-      hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center rounded-md bg-navy px-5 py-2.5
+      text-sm font-semibold tracking-wide text-white
+      transition-all duration-200
+      hover:-translate-y-0.5 hover:bg-navy-light hover:shadow-lg
+      active:translate-y-0 active:shadow-none
+      disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-sm border border-navy/25
-      bg-white/90 px-5 py-2.5 text-sm font-semibold tracking-wide text-navy
-      transition-colors duration-150 hover:border-navy hover:bg-white
+    @apply inline-flex items-center justify-center rounded-md border border-border
+      bg-white px-5 py-2.5 text-sm font-semibold tracking-wide text-navy
+      transition-all duration-200 hover:-translate-y-0.5 hover:border-navy/40 hover:bg-cream
+      active:translate-y-0
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-gold {
+    @apply inline-flex items-center justify-center rounded-md bg-accent px-5 py-2.5
+      text-sm font-semibold tracking-wide text-white
+      transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#b3862f] hover:shadow-lg
+      active:translate-y-0
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-outline-white {
+    @apply inline-flex items-center justify-center rounded-md border border-white/70
+      bg-transparent px-5 py-2.5 text-sm font-semibold tracking-wide text-white
+      transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/10
+      active:translate-y-0
       disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .input-field {
-    @apply w-full rounded-sm border border-navy/15 bg-white px-3.5 py-3 text-navy
-      shadow-[inset_0_1px_2px_rgba(26,43,74,0.04)]
-      placeholder:text-navy/35 focus:border-navy focus:outline-none focus:ring-2
-      focus:ring-navy/15;
+    @apply w-full rounded-lg border-[1.5px] border-[#d1d5db] bg-white px-4 py-3
+      text-text-primary placeholder:text-text-muted/70
+      transition-shadow duration-200
+      focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent;
   }
 
   .label-field {
-    @apply mb-1.5 block text-sm font-semibold tracking-wide text-navy;
+    @apply mb-1.5 block text-sm font-semibold text-navy;
+  }
+
+  .helper-text {
+    @apply mt-1.5 text-xs text-text-muted;
+  }
+
+  .surface-card {
+    @apply rounded-xl border border-border bg-white shadow-card;
   }
 
   .surface-panel {
-    @apply border border-navy/10 bg-white/85 backdrop-blur-[2px];
+    @apply rounded-xl border border-border bg-white shadow-card;
+  }
+
+  .card-interactive {
+    @apply rounded-xl border border-border bg-white shadow-card
+      transition-all duration-300 ease-out
+      hover:-translate-y-1 hover:border-accent/40 hover:shadow-xl;
+  }
+
+  .section-gap {
+    @apply py-20;
+  }
+
+  .page-pad {
+    @apply mx-auto w-full max-w-6xl px-4 pb-20 sm:px-6;
+  }
+
+  .drop-zone {
+    @apply flex cursor-pointer flex-col items-center justify-center rounded-xl
+      border-2 border-dashed border-navy bg-cream px-4 py-10 text-center
+      transition-all duration-200 hover:scale-[1.01] hover:bg-white hover:shadow-md;
+  }
+
+  .drop-zone-active {
+    @apply scale-[1.02] border-accent bg-white shadow-md;
+  }
+
+  .map-frame {
+    @apply h-[250px] w-full overflow-hidden rounded-xl border border-border md:h-[350px];
+  }
+
+  .map-frame-sm {
+    @apply h-[250px] w-full overflow-hidden rounded-xl border border-border md:h-[300px];
+  }
+
+  .conf-high {
+    @apply bg-emerald-100 text-emerald-800;
+  }
+
+  .conf-medium {
+    @apply bg-amber-100 text-amber-800;
+  }
+
+  .conf-low {
+    @apply bg-gray-100 text-gray-600;
+  }
+
+  .platform-pill {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px]
+      font-bold uppercase tracking-wide text-white;
+  }
+
+  .fade-up {
+    animation: fade-up 0.55s ease-out both;
+  }
+
+  .pulse-dot {
+    animation: pulse-dot 1.6s ease-in-out infinite;
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, #eee 0%, #f7f4ee 40%, #eee 80%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+
+  .gold-ring {
+    animation: ring-pulse 2.4s ease-out infinite;
+  }
+
+  .nav-link {
+    @apply relative text-sm font-semibold tracking-wide text-white/70 transition-colors hover:text-white;
+  }
+
+  .nav-link::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -6px;
+    height: 2px;
+    width: 0;
+    background: var(--accent);
+    transition: width 0.2s ease;
+  }
+
+  .nav-link:hover::after,
+  .nav-link-active::after {
+    width: 100%;
+  }
+
+  .nav-link-active {
+    @apply text-white;
   }
 }
