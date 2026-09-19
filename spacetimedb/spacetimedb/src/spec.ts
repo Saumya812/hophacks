@@ -1,0 +1,595 @@
+export const specs = {
+  "users": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "email": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "role": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT",
+      "default": "public"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "persons": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "name": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "age": {
+      "type": "integer",
+      "nullable": false,
+      "sql_type": "INTEGER"
+    },
+    "gender": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "last_seen_location": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "last_seen_date": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "DATE"
+    },
+    "description": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "photo_url": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "status": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT",
+      "default": "active"
+    },
+    "police_report_number": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    },
+    "ai_summary": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "ai_summary_updated_at": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TIMESTAMPTZ"
+    },
+    "verified_police_report": {
+      "type": "boolean",
+      "nullable": false,
+      "sql_type": "BOOLEAN",
+      "default": false
+    },
+    "last_verified_at": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TIMESTAMPTZ"
+    },
+    "found_at": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TIMESTAMPTZ"
+    },
+    "found_message": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "watchers_count": {
+      "type": "integer",
+      "nullable": false,
+      "sql_type": "INTEGER",
+      "default": 0
+    },
+    "shares_count": {
+      "type": "integer",
+      "nullable": false,
+      "sql_type": "INTEGER",
+      "default": 0
+    },
+    "tips_count": {
+      "type": "integer",
+      "nullable": false,
+      "sql_type": "INTEGER",
+      "default": 0
+    },
+    "suspicious_flags": {
+      "type": "integer",
+      "nullable": false,
+      "sql_type": "INTEGER",
+      "default": 0
+    },
+    "under_review": {
+      "type": "boolean",
+      "nullable": false,
+      "sql_type": "BOOLEAN",
+      "default": false
+    },
+    "demo_tag": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "owner_token": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "contact_email": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "last_seen_time": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "source_listing_url": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "source_agency_name": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "external_case_number": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "source_last_checked_at": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "DATE"
+    }
+  },
+  "sightings": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "person_id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID"
+    },
+    "location_lat": {
+      "type": "number",
+      "nullable": false,
+      "sql_type": "DOUBLE PRECISION"
+    },
+    "location_lng": {
+      "type": "number",
+      "nullable": false,
+      "sql_type": "DOUBLE PRECISION"
+    },
+    "date_time": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ"
+    },
+    "description": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "confidence_level": {
+      "type": "integer",
+      "nullable": false,
+      "sql_type": "INTEGER",
+      "default": 3
+    },
+    "submitter_email": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    },
+    "credibility_score": {
+      "type": "integer",
+      "nullable": true,
+      "sql_type": "INTEGER"
+    },
+    "family_review_flag": {
+      "type": "boolean",
+      "nullable": false,
+      "sql_type": "BOOLEAN",
+      "default": false
+    },
+    "credibility_reasons": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    }
+  },
+  "case_updates": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "person_id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID"
+    },
+    "author_email": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "body": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "case_coordinators": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "person_id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID"
+    },
+    "email": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "role": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT",
+      "default": "coordinator"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "alert_subscriptions": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "kind": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "email": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "query_text": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "zip_code": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "person_id": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "UUID"
+    },
+    "active": {
+      "type": "boolean",
+      "nullable": false,
+      "sql_type": "BOOLEAN",
+      "default": true
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "tip_clusters": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "person_id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID"
+    },
+    "center_lat": {
+      "type": "number",
+      "nullable": false,
+      "sql_type": "DOUBLE PRECISION"
+    },
+    "center_lng": {
+      "type": "number",
+      "nullable": false,
+      "sql_type": "DOUBLE PRECISION"
+    },
+    "radius_km": {
+      "type": "number",
+      "nullable": false,
+      "sql_type": "DOUBLE PRECISION",
+      "default": 1.5
+    },
+    "tip_count": {
+      "type": "integer",
+      "nullable": false,
+      "sql_type": "INTEGER"
+    },
+    "window_start": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ"
+    },
+    "window_end": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ"
+    },
+    "label": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "notified": {
+      "type": "boolean",
+      "nullable": false,
+      "sql_type": "BOOLEAN",
+      "default": false
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "profile_flags": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "person_id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID"
+    },
+    "reason": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "reporter_ip": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "search_memory": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "participant_key": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "city": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "date_from": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "DATE"
+    },
+    "date_to": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "DATE"
+    },
+    "filters_json": {
+      "type": "json",
+      "nullable": true,
+      "sql_type": "JSONB"
+    },
+    "updated_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "email_outbox_log": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "to_email": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "subject": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "body": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "kind": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "meta": {
+      "type": "json",
+      "nullable": true,
+      "sql_type": "JSONB"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "live_tip_events": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "person_id": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "UUID"
+    },
+    "person_name": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "snippet": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "TEXT"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  },
+  "case_source_links": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID",
+      "default": "uuid"
+    },
+    "person_id": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "UUID"
+    },
+    "title": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "url": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT"
+    },
+    "source_type": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TEXT",
+      "default": "other"
+    },
+    "published_at": {
+      "type": "string",
+      "nullable": true,
+      "sql_type": "DATE"
+    },
+    "created_at": {
+      "type": "string",
+      "nullable": false,
+      "sql_type": "TIMESTAMPTZ",
+      "default": "now"
+    }
+  }
+} as const;

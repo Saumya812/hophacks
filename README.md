@@ -2,7 +2,7 @@
 
 Missing-persons platform: publish cases, collect tips, search with natural language, map sightings, and run **Smart Person Search** across public web sources.
 
-**Stack:** React + Vite + Tailwind · FastAPI · Supabase (PostgreSQL) · Leaflet · Google Gemini · Apify (optional) · marimo notebooks
+**Stack:** React + Vite + Tailwind · FastAPI · SpacetimeDB · Leaflet · Google Gemini · Apify (optional) · marimo notebooks
 
 ---
 
@@ -47,18 +47,9 @@ hophacks/
 
 ---
 
-## 1. Database (Supabase)
+## 1. Database (SpacetimeDB)
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Run [`db/schema.sql`](db/schema.sql) in the SQL Editor.
-3. Apply migrations in order:
-   - [`db/migrations/002_intelligence.sql`](db/migrations/002_intelligence.sql)
-   - [`db/migrations/003_advanced_features.sql`](db/migrations/003_advanced_features.sql)
-4. Seed mock user is included: `mock@findmypal.local` / `00000000-0000-0000-0000-000000000001`.
-
-From **Project Settings → API**:
-- Project URL → `SUPABASE_URL`
-- **service_role** key → `SUPABASE_KEY`
+Follow [SpacetimeDB setup and restart instructions](docs/spacetimedb.md). All application tables now live in SpacetimeDB, and the homepage receives native live updates. Start the persistent local database with `bash scripts/spacetime.sh start`. Historical SQL files are retained for migration reference.
 
 ---
 
@@ -77,7 +68,7 @@ Fill `backend/.env` (see `.env.example`). Important keys:
 
 | Key | Purpose |
 |-----|---------|
-| `SUPABASE_URL` / `SUPABASE_KEY` | Database |
+| `SPACETIMEDB_URI` / `SPACETIMEDB_DATABASE` / `SPACETIMEDB_TOKEN` | Database endpoint, name and private publishing identity |
 | `GEMINI_API_KEY` | NL search + Lookup extraction (+ optional `GEMINI_MODEL`) |
 | `SERPAPI_KEY` | Google + YouTube search (Lookup) |
 | `NEWSAPI_KEY` | News mentions |

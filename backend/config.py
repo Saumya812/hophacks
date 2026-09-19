@@ -20,9 +20,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Supabase (PostgreSQL) connection via the official client
-    supabase_url: str = "https://YOUR_PROJECT.supabase.co"
-    supabase_key: str = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
 
     # Google Gemini — natural search + Smart Person Search extraction
     gemini_api_key: str = "YOUR_GEMINI_API_KEY"
@@ -52,7 +49,9 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model: str = "eleven_monolingual_v1"
     backboard_api_key: str = ""
-    spacetimedb_uri: str = ""
+    spacetimedb_uri: str = "http://127.0.0.1:3000"
+    spacetimedb_database: str = "findmypal"
+    spacetimedb_token: str = ""
     snowflake_account: str = ""
 
     # Comma-separated list of allowed frontend origins

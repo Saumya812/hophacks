@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from database import get_supabase
+from database import get_database
 from schemas import SightingCreate, SightingListResponse, SightingOut
 from services.intelligence import score_sighting_credibility
 from services.advanced import (
@@ -24,7 +24,7 @@ router = APIRouter(tags=["sightings"])
 
 
 def _row_to_sighting(row: dict) -> SightingOut:
-    """Map a Supabase row dict to the SightingOut schema."""
+    """Map a SpacetimeDB row dict to the SightingOut schema."""
     # Drop unknown keys so pre-migration rows still validate
     allowed = set(SightingOut.model_fields.keys())
     cleaned = {k: v for k, v in row.items() if k in allowed}
@@ -34,11 +34,11 @@ def _row_to_sighting(row: dict) -> SightingOut:
 _row_to_sighting_flexible = _row_to_sighting
 
 
-def _post_sighting_side_effects(supabase, person_id, payload, row: dict) -> None:
+def _post_sighting_side_effects(database, person_id, payload, row: dict) -> None:
     """Live feed, engagement, NL alerts, tip clustering — best effort."""
     try:
         person = (
-            supabase.table("persons")
+            database.table("persons")
             .select("name")
             .eq("id", str(person_id))
             .limit(1)
@@ -67,9 +67,9 @@ def _post_sighting_side_effects(supabase, person_id, payload, row: dict) -> None
 
 def _ensure_person_exists(person_id: UUID) -> None:
     """Raise 404 if the parent person row is missing."""
-    supabase = get_supabase()
+    database = get_database()
     result = (
-        supabase.table("persons")
+        database.table("persons")
         .select("id")
         .eq("id", str(person_id))
         .limit(1)
@@ -96,7 +96,7 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
     """
     _ensure_person_exists(person_id)
 
-    supabase = get_supabase()
+    database = get_database()
     data = payload.model_dump(mode="json")
     data["person_id"] = str(person_id)
 
@@ -116,21 +116,7 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
     data["family_review_flag"] = scored["family_review_flag"]
     data["credibility_reasons"] = "; ".join(scored.get("reasons") or [])
 
-    try:
-        result = supabase.table("sightings").insert(data).execute()
-    except Exception:
-        # Columns may be missing before migration 002 — insert without them
-        data.pop("credibility_score", None)
-        data.pop("family_review_flag", None)
-        data.pop("credibility_reasons", None)
-        result = supabase.table("sightings").insert(data).execute()
-        if result.data:
-            row = dict(result.data[0])
-            row.update(scored)
-            row["credibility_reasons"] = "; ".join(scored.get("reasons") or [])
-            _post_sighting_side_effects(supabase, person_id, payload, row)
-            return _row_to_sighting_flexible(row)
-        raise
+    result = database.table("sightings").insert(data).execute()
 
     if not result.data:
         raise HTTPException(
@@ -142,7 +128,7 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
     # Ensure response includes scoring even if DB omitted defaults
     row.setdefault("credibility_score", scored["credibility_score"])
     row.setdefault("family_review_flag", scored["family_review_flag"])
-    _post_sighting_side_effects(supabase, person_id, payload, row)
+    _post_sighting_side_effects(database, person_id, payload, row)
     return _row_to_sighting_flexible(row)
 
 
@@ -159,9 +145,9 @@ def list_sightings(person_id: UUID) -> SightingListResponse:
     """
     _ensure_person_exists(person_id)
 
-    supabase = get_supabase()
+    database = get_database()
     result = (
-        supabase.table("sightings")
+        database.table("sightings")
         .select("*")
         .eq("person_id", str(person_id))
         .order("date_time", desc=True)

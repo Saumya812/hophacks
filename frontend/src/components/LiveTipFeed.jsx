@@ -1,9 +1,9 @@
 /**
- * Live tip feed — polls /live/tips (SpacetimeDB stand-in).
+ * Live tip feed backed by a native SpacetimeDB subscription.
  */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getLiveTips } from '../advancedApi.js'
+import { DbConnection } from '../spacetime/index.ts'
 
 export default function LiveTipFeed() {
   const [tips, setTips] = useState([])
@@ -11,21 +11,48 @@ export default function LiveTipFeed() {
 
   useEffect(() => {
     let alive = true
-    async function tick() {
-      try {
-        const data = await getLiveTips(10)
-        if (!alive) return
-        setTips(data.tips || [])
-        setNote(data.note || '')
-      } catch {
-        if (alive) setNote('Live feed unavailable')
-      }
+    let connection
+    let retry
+    function reconnect() {
+      if (!alive || retry) return
+      setNote('Connecting to live updates…')
+      retry = setTimeout(() => { retry = null; connect() }, 4000)
     }
-    tick()
-    const id = setInterval(tick, 4000)
+    function connect() {
+      if (!alive) return
+      setNote('Connecting to live updates…')
+      connection = DbConnection.builder()
+        .withUri(import.meta.env.VITE_SPACETIMEDB_URI || 'ws://127.0.0.1:3000')
+        .withDatabaseName(import.meta.env.VITE_SPACETIMEDB_DATABASE || 'findmypal')
+        .onConnect((conn) => {
+          if (!alive) { conn.disconnect(); return }
+          const refresh = () => {
+            if (!alive) return
+            setTips([...conn.db.caseActivity.iter()]
+              .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))
+              .slice(0, 10).map(row => ({
+                id: row.id, person_id: row.personId, person_name: row.personName,
+                created_at: row.createdAt, snippet: 'New community tip submitted',
+              })))
+          }
+          conn.db.caseActivity.onInsert(refresh)
+          conn.db.caseActivity.onUpdate(refresh)
+          conn.db.caseActivity.onDelete(refresh)
+          conn.subscriptionBuilder().onApplied(() => {
+            refresh()
+            if (alive) setNote('Live updates connected')
+          }).onError(() => { conn.disconnect(); reconnect() })
+            .subscribe('SELECT * FROM case_activity')
+        })
+        .onConnectError(reconnect)
+        .onDisconnect(reconnect)
+        .build()
+    }
+    connect()
     return () => {
       alive = false
-      clearInterval(id)
+      clearTimeout(retry)
+      connection?.disconnect()
     }
   }, [])
 

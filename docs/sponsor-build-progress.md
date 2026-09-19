@@ -1,5 +1,7 @@
 # FindMyPal — Sponsor Build Progress
 
+> Historical build notes below. Superseded on 2026-09-19 by the complete [SpacetimeDB migration](spacetimedb.md): all application tables now use SpacetimeDB, and the homepage uses a native subscription. The earlier Supabase and polling-fallback architecture is no longer current.
+
 **Phase completed:** S0 only (audit, accounts, runnable baseline)  
 **Date:** 2026-09-19  
 **Product name preserved:** FindMyPal  

@@ -1,5 +1,11 @@
 # FindMyPal — Sponsor Evidence Log
 
+## SpacetimeDB migration — 2026-09-19
+
+All 12 application tables use native SpacetimeDB storage. The original 1 user, 2 cases and 4 sightings were backed up, copied and verified. The isolated native integration suite passed all 12 tests, covering the API case lifecycle, private-table authorization, rollback, counters, retries and secondary tables. A real anonymous SDK subscription received a committed tip activity event without private fields. Frontend production build and module TypeScript checks passed. The running API returned `{"status":"healthy","database":"spacetimedb"}` and the frontend returned HTTP 200 on port 5173. See [setup and reproducible checks](spacetimedb.md).
+
+The following entries are historical; their Supabase and polling-fallback descriptions have been superseded.
+
 **Purpose:** Record what was actually exercised. Never claim fabricated success, prize eligibility, training improvements, or live sponsor integration without executed proof.
 
 **Legend — integration evidence types**
