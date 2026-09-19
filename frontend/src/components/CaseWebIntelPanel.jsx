@@ -130,22 +130,21 @@ export default function CaseWebIntelPanel({ person, autoStart = false }) {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-navy/15 pb-3">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-navy/45">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted">
             Public web intelligence
           </p>
-          <h2 className="font-display text-2xl text-navy sm:text-3xl">
-            Same scan as Lookup
-          </h2>
-          <p className="mt-1 max-w-2xl text-sm text-navy/60">
-            Apify + public sources for <span className="font-semibold text-navy">{person.name}</span>
-            — Reddit, Instagram, Facebook, news, and more — merged into a sighting brief.
+          <h2 className="font-display text-2xl text-navy sm:text-3xl">Web intel scan</h2>
+          <p className="mt-1 max-w-2xl text-sm text-text-muted">
+            Same open-web crawl as Lookup for{' '}
+            <span className="font-semibold text-navy">{person.name}</span> — results stay in your
+            browser session.
           </p>
         </div>
         <button
           type="button"
-          className="btn-secondary"
+          className="btn-primary"
           disabled={busy}
           onClick={() => runScan({ force: true })}
         >
@@ -154,22 +153,22 @@ export default function CaseWebIntelPanel({ person, autoStart = false }) {
       </div>
 
       {busy && (
-        <div className="surface-panel space-y-3 p-5">
+        <div className="surface-card space-y-3 p-5">
           <p className="text-sm font-semibold text-navy">{STATUS_MESSAGES[statusIdx]}</p>
-          <div className="h-2 overflow-hidden bg-navy/10">
+          <div className="h-2 overflow-hidden rounded-full bg-cream ring-1 ring-border">
             <div
-              className="h-full bg-navy transition-all duration-500"
+              className="h-full rounded-full bg-accent transition-all duration-500"
               style={{ width: `${Math.min(progress, 95)}%` }}
             />
           </div>
-          <p className="text-xs text-navy/45">
+          <p className="text-xs text-text-muted">
             Usually 30–90 seconds. If this passes ~2 minutes, it will time out so you can retry.
           </p>
         </div>
       )}
 
       {error && (
-        <div className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p>{error}</p>
           <button
             type="button"
@@ -184,9 +183,9 @@ export default function CaseWebIntelPanel({ person, autoStart = false }) {
       {!busy && report && <ReportCard report={report} />}
 
       {!busy && !report && !error && (
-        <p className="text-sm text-navy/55">
-          Click <span className="font-semibold">Scan public web</span> to run the same crawl as Lookup
-          (Apify + Gemini). It is not started automatically so the profile stays fast to open.
+        <p className="text-sm text-text-muted">
+          Click <span className="font-semibold">Scan public web</span> to run the same crawl as
+          Lookup. It is not started automatically so the profile stays fast to open.
         </p>
       )}
     </section>

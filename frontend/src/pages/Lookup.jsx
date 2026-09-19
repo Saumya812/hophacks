@@ -1,21 +1,16 @@
 /**
- * /lookup — Smart Person Search (3-step flow on one page).
- * Step 1: name + photo input
- * Step 2: animated progress while backend scrapes
- * Step 3: intelligence report via ReportCard
+ * /lookup — Smart Person Search (3-step flow). Visual polish only.
  */
 import { useEffect, useRef, useState } from 'react'
 import { lookupSearch } from '../api.js'
 import ReportCard from '../components/ReportCard.jsx'
 
 const STATUS_MESSAGES = [
-  'Searching Instagram...',
-  'Scanning Facebook...',
-  'Checking TikTok...',
-  'Scanning X (Twitter)...',
-  'Searching news comments...',
-  'Reading Reddit threads...',
-  'Compiling report...',
+  'Searching news sources...',
+  'Scanning Reddit...',
+  'Checking public web...',
+  'Running AI extraction...',
+  'Compiling your report...',
 ]
 
 const STEPS = [
@@ -31,6 +26,29 @@ function fileToDataUrl(file) {
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+}
+
+function UploadIcon() {
+  return (
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden className="text-navy">
+      <path
+        d="M12 16V4m0 0l-4 4m4-4l4 4M4 16.5V18a2 2 0 002 2h12a2 2 0 002-2v-1.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function Spinner() {
+  return (
+    <div
+      className="h-12 w-12 animate-spin rounded-full border-[3px] border-navy/15 border-t-navy"
+      aria-hidden
+    />
+  )
 }
 
 export default function Lookup() {
@@ -51,7 +69,7 @@ export default function Lookup() {
     if (step !== 2) return undefined
     const statusTimer = setInterval(() => {
       setStatusIdx((i) => (i + 1) % STATUS_MESSAGES.length)
-    }, 1800)
+    }, 2000)
     const progTimer = setInterval(() => {
       setProgress((p) => (p >= 92 ? 92 : p + Math.random() * 6))
     }, 700)
@@ -124,177 +142,206 @@ export default function Lookup() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-navy/45">
-          Smart Person Search
-        </p>
-        <h1 className="font-display text-3xl text-navy sm:text-4xl">Person Lookup</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-navy/65 sm:text-base">
-          Upload a photo and name. FindMyPal searches publicly indexed web and social sources,
-          then compiles a structured sighting brief. Photos are kept only for this session.
-        </p>
-      </div>
-
-      {/* Step indicator */}
-      <ol className="grid grid-cols-3 gap-2 border border-navy/10 bg-white/80 p-2 sm:gap-3 sm:p-3">
-        {STEPS.map((s) => {
-          const active = step === s.id
-          const done = step > s.id
-          return (
-            <li
-              key={s.id}
-              className={`px-2 py-3 text-center sm:px-3 ${
-                active
-                  ? 'bg-navy text-white'
-                  : done
-                    ? 'bg-navy-50 text-navy'
-                    : 'text-navy/40'
-              }`}
-            >
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em]">Step {s.id}</p>
-              <p className="mt-1 text-sm font-semibold">{s.label}</p>
-            </li>
-          )
-        })}
-      </ol>
-
-      {/* STEP 1 */}
-      {step === 1 && (
-        <form onSubmit={handleSearch} className="surface-panel space-y-5 p-5 sm:p-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="label-field" htmlFor="firstName">
-                First name
-              </label>
-              <input
-                id="firstName"
-                className="input-field"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                required
-                autoComplete="given-name"
-              />
-            </div>
-            <div>
-              <label className="label-field" htmlFor="lastName">
-                Last name
-              </label>
-              <input
-                id="lastName"
-                className="input-field"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                required
-                autoComplete="family-name"
-              />
-            </div>
-          </div>
-
-          <div>
-            <p className="label-field">Photo</p>
-            <p className="mb-2 text-sm text-navy/60">
-              Upload a clear, front-facing photo for best results
-            </p>
-            <div
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click()
-              }}
-              onClick={() => fileRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDragOver(true)
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault()
-                setDragOver(false)
-                const file = e.dataTransfer.files?.[0]
-                handlePhotoFile(file)
-              }}
-              className={`flex cursor-pointer flex-col items-center justify-center border border-dashed px-4 py-10 text-center transition-colors ${
-                dragOver
-                  ? 'border-navy bg-navy-50'
-                  : 'border-navy/25 bg-white hover:border-navy/50'
-              }`}
-            >
-              {photoDataUrl ? (
-                <>
-                  <img
-                    src={photoDataUrl}
-                    alt="Upload preview"
-                    className="mb-3 h-28 w-24 object-cover ring-1 ring-navy/15"
-                  />
-                  <p className="text-sm font-semibold text-navy">{photoName || 'Photo ready'}</p>
-                  <p className="mt-1 text-xs text-navy/50">Click or drop to replace</p>
-                </>
-              ) : (
-                <>
-                  <p className="font-display text-xl text-navy/70">Drop photo here</p>
-                  <p className="mt-1 text-sm text-navy/50">or click to browse · JPG/PNG · max 2.5MB</p>
-                </>
-              )}
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => handlePhotoFile(e.target.files?.[0])}
-              />
-            </div>
-          </div>
-
-          {error && (
-            <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-              {error}
-            </p>
-          )}
-
-          <button type="submit" className="btn-primary w-full sm:w-auto">
-            Search for this person
-          </button>
-        </form>
-      )}
-
-      {/* STEP 2 */}
-      {step === 2 && (
-        <div className="surface-panel space-y-5 p-6 sm:p-8">
-          <p className="font-display text-2xl text-navy">Searching public sources</p>
-          <p className="text-sm text-navy/60">
-            Queries run in parallel across web index, news, Reddit, X, and YouTube.
+    <div className="bg-cream pb-20 pt-10">
+      <div className="page-pad !pb-0">
+        <div className="mb-8 max-w-2xl">
+          <p
+            className="text-[11px] font-semibold uppercase text-accent"
+            style={{ letterSpacing: '3px' }}
+          >
+            Smart Person Search
           </p>
-          <div className="h-2 w-full overflow-hidden bg-navy-100">
-            <div
-              className="h-full bg-navy transition-[width] duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p className="text-sm font-semibold tracking-wide text-navy/80" aria-live="polite">
-            {STATUS_MESSAGES[statusIdx]}
+          <h1 className="mt-2 font-display text-3xl text-navy sm:text-4xl">Person Lookup</h1>
+          <p className="mt-2 text-sm leading-relaxed text-text-muted sm:text-base">
+            Upload a photo and name. FindMyPal searches publicly indexed web and social sources,
+            then compiles a structured sighting brief. Photos are kept only for this session.
           </p>
-          <button type="button" className="btn-secondary" onClick={resetAll}>
-            Cancel
-          </button>
         </div>
-      )}
 
-      {/* STEP 3 */}
-      {step === 3 && report && (
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-navy/55">
-              Report ID <span className="font-mono text-navy">{report.report_id}</span>
-              {report.cached ? ' · served from 1-hour cache' : ''}
+        {/* Step indicator */}
+        <ol className="mb-10 flex items-center justify-between gap-2">
+          {STEPS.map((s, i) => {
+            const active = step === s.id
+            const done = step > s.id
+            const clickable = done
+            return (
+              <li key={s.id} className="flex flex-1 items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!clickable}
+                  onClick={() => {
+                    if (clickable) {
+                      abortRef.current = true
+                      setStep(s.id)
+                      if (s.id === 1) setReport(null)
+                    }
+                  }}
+                  className={`flex flex-col items-center gap-2 sm:flex-row sm:gap-3 ${
+                    clickable ? 'cursor-pointer' : 'cursor-default'
+                  }`}
+                >
+                  <span
+                    className={`flex h-9 w-9 items-center justify-center rounded-md text-sm font-bold transition-all ${
+                      active
+                        ? 'bg-navy text-white gold-ring'
+                        : done
+                          ? 'bg-accent text-white hover:scale-105'
+                          : 'bg-border/60 text-text-muted'
+                    }`}
+                  >
+                    {done ? '✓' : s.id}
+                  </span>
+                  <span
+                    className={`text-xs font-semibold sm:text-sm ${
+                      active || done ? 'text-navy' : 'text-text-muted'
+                    }`}
+                  >
+                    {s.label}
+                  </span>
+                </button>
+                {i < STEPS.length - 1 && (
+                  <div
+                    className={`mx-1 hidden h-px flex-1 sm:block ${done || active ? 'bg-accent' : 'bg-border'}`}
+                  />
+                )}
+              </li>
+            )
+          })}
+        </ol>
+
+        {/* STEP 1 */}
+        {step === 1 && (
+          <form
+            onSubmit={handleSearch}
+            className="surface-card mx-auto max-w-[680px] space-y-6 p-6 sm:p-8 fade-up"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label-field" htmlFor="firstName">
+                  First name
+                </label>
+                <input
+                  id="firstName"
+                  className="input-field min-h-12"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  autoComplete="given-name"
+                />
+              </div>
+              <div>
+                <label className="label-field" htmlFor="lastName">
+                  Last name
+                </label>
+                <input
+                  id="lastName"
+                  className="input-field min-h-12"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  autoComplete="family-name"
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="label-field">Photo</p>
+              <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click()
+                }}
+                onClick={() => fileRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDragOver(true)
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setDragOver(false)
+                  handlePhotoFile(e.dataTransfer.files?.[0])
+                }}
+                className={`drop-zone ${dragOver ? 'drop-zone-active' : ''}`}
+              >
+                {photoDataUrl ? (
+                  <>
+                    <img
+                      src={photoDataUrl}
+                      alt="Upload preview"
+                      className="mb-3 h-28 w-24 rounded-lg object-cover"
+                    />
+                    <p className="text-sm font-semibold text-navy">{photoName || 'Photo ready'}</p>
+                    <p className="mt-1 text-xs text-text-muted">Click or drop to replace</p>
+                  </>
+                ) : (
+                  <>
+                    <UploadIcon />
+                    <p className="mt-3 text-sm font-semibold text-navy">
+                      Drag photo here or click to browse
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">JPG/PNG · max 2.5MB</p>
+                  </>
+                )}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handlePhotoFile(e.target.files?.[0])}
+                />
+              </div>
+            </div>
+
+            {error && (
+              <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {error}
+              </p>
+            )}
+
+            <button type="submit" className="btn-primary h-14 w-full text-base">
+              Search for this person
+            </button>
+          </form>
+        )}
+
+        {/* STEP 2 */}
+        {step === 2 && (
+          <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-16 text-center">
+            <Spinner />
+            <p className="mt-6 font-display text-2xl text-navy">Searching public sources</p>
+            <p className="mt-2 text-sm text-text-muted" aria-live="polite">
+              {STATUS_MESSAGES[statusIdx]}
             </p>
-            <button type="button" className="btn-secondary" onClick={resetAll}>
-              New search
+            <div className="mt-8 h-2 w-full overflow-hidden rounded-full bg-cream ring-1 ring-border">
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <button type="button" className="btn-secondary mt-8" onClick={resetAll}>
+              Cancel
             </button>
           </div>
-          <ReportCard report={report} />
-        </div>
-      )}
+        )}
+
+        {/* STEP 3 */}
+        {step === 3 && report && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-text-muted">
+                Report ID <span className="font-mono text-navy">{report.report_id}</span>
+                {report.cached ? ' · served from 1-hour cache' : ''}
+              </p>
+              <button type="button" className="btn-secondary" onClick={resetAll}>
+                New search
+              </button>
+            </div>
+            <ReportCard report={report} />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -3,10 +3,10 @@
  * Uses Esri public tiles (no API key).
  */
 import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, LayersControl } from 'react-leaflet'
 import L from 'leaflet'
 import { geocode } from './DensityHeatMap.jsx'
-import { BASEMAP_ATTR, BASEMAP_URL } from '../mapTiles.js'
+import { BASEMAP_ATTR, BASEMAP_URL, SATELLITE_ATTR, SATELLITE_URL } from '../mapTiles.js'
 
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
@@ -93,7 +93,7 @@ export default function SightingsMap({ lastSeenLocation, sightings, showPath = t
   if (!allPositions.length) {
     return (
       <div className="space-y-2">
-        <div className="flex h-72 items-center justify-center border border-navy/15 bg-navy-50 text-sm text-navy/55 sm:h-96">
+        <div className="map-frame flex items-center justify-center bg-navy-50 text-sm text-text-muted">
           No tip coordinates yet{geoError ? ` · ${geoError}` : ''}. Submit a tip to place markers here.
         </div>
       </div>
@@ -102,7 +102,7 @@ export default function SightingsMap({ lastSeenLocation, sightings, showPath = t
 
   return (
     <div className="space-y-2">
-      <div className="h-72 w-full overflow-hidden border border-navy/15 bg-navy-50 sm:h-96">
+      <div className="map-frame bg-navy-50">
         <MapContainer
           center={center}
           zoom={12}
@@ -110,7 +110,14 @@ export default function SightingsMap({ lastSeenLocation, sightings, showPath = t
           className="h-full w-full"
           style={{ height: '100%', width: '100%' }}
         >
-          <TileLayer attribution={BASEMAP_ATTR} url={BASEMAP_URL} />
+          <LayersControl position="topright">
+            <LayersControl.BaseLayer checked name="Streets">
+              <TileLayer attribution={BASEMAP_ATTR} url={BASEMAP_URL} />
+            </LayersControl.BaseLayer>
+            <LayersControl.BaseLayer name="Satellite">
+              <TileLayer attribution={SATELLITE_ATTR} url={SATELLITE_URL} />
+            </LayersControl.BaseLayer>
+          </LayersControl>
           <FitBounds positions={allPositions} />
 
           {lastKnown && (

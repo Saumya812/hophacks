@@ -26,8 +26,12 @@ _BASEMAP_TILES = (
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/"
     "MapServer/tile/{z}/{y}/{x}"
 )
-_BASEMAP_ATTR = (
-    'Tiles &copy; <a href="https://www.esri.com/">Esri</a> — Source: Esri, OpenStreetMap'
+_SATELLITE_TILES = (
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/"
+    "MapServer/tile/{z}/{y}/{x}"
+)
+_SATELLITE_ATTR = (
+    'Tiles &copy; <a href="https://www.esri.com/">Esri</a> — Source: Esri, Maxar, Earthstar Geographics'
 )
 
 
@@ -101,7 +105,15 @@ def build_folium_heatmap_html(
     folium.TileLayer(
         tiles=_BASEMAP_TILES,
         attr=_BASEMAP_ATTR,
-        name="Esri streets",
+        name="Streets",
+        max_zoom=19,
+        overlay=False,
+        control=True,
+    ).add_to(fmap)
+    folium.TileLayer(
+        tiles=_SATELLITE_TILES,
+        attr=_SATELLITE_ATTR,
+        name="Satellite",
         max_zoom=19,
         overlay=False,
         control=True,
@@ -163,6 +175,7 @@ def build_folium_heatmap_html(
     </div>
     """
     fmap.get_root().html.add_child(folium.Element(title_html))
+    folium.LayerControl(position="topright", collapsed=False).add_to(fmap)
     return fmap.get_root().render()
 
 

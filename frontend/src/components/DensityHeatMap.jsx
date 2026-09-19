@@ -6,11 +6,11 @@
  *  - Falls back gracefully when empty
  */
 import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, Marker, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup, Marker, useMap, LayersControl } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet.heat'
 import { API_BASE } from '../api.js'
-import { BASEMAP_ATTR, BASEMAP_URL } from '../mapTiles.js'
+import { BASEMAP_ATTR, BASEMAP_URL, SATELLITE_ATTR, SATELLITE_URL } from '../mapTiles.js'
 
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
@@ -112,7 +112,7 @@ export default function DensityHeatMap({
   points = [],
   lastSeenLocation = '',
   title = 'Density heatmap',
-  heightClass = 'h-80 sm:h-[28rem]',
+  heightClass = 'h-[250px] md:h-[350px]',
   showMarkers = true,
 }) {
   const [lastKnown, setLastKnown] = useState(null)
@@ -170,7 +170,7 @@ export default function DensityHeatMap({
 
   return (
     <div className="space-y-2">
-      <div className={`${heightClass} w-full overflow-hidden border border-navy/15 bg-navy-50`}>
+      <div className={`${heightClass} w-full overflow-hidden rounded-xl border border-border bg-navy-50`}>
         {heatPoints.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
             <p className="font-display text-xl text-navy/70">{title}</p>
@@ -188,7 +188,14 @@ export default function DensityHeatMap({
             className="h-full w-full"
             style={{ height: '100%', width: '100%' }}
           >
-            <TileLayer attribution={BASEMAP_ATTR} url={BASEMAP_URL} />
+            <LayersControl position="topright">
+              <LayersControl.BaseLayer checked name="Streets">
+                <TileLayer attribution={BASEMAP_ATTR} url={BASEMAP_URL} />
+              </LayersControl.BaseLayer>
+              <LayersControl.BaseLayer name="Satellite">
+                <TileLayer attribution={SATELLITE_ATTR} url={SATELLITE_URL} />
+              </LayersControl.BaseLayer>
+            </LayersControl>
             <FitPoints
               points={heatPoints}
               fallback={lastKnown ? [lastKnown.lat, lastKnown.lng] : center}

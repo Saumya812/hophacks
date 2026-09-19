@@ -50,13 +50,13 @@ export default function FaceMatchPanel() {
   }
 
   return (
-    <section className="surface-panel p-5 sm:p-6">
+    <section className="surface-card p-5 sm:p-6">
       <div className="mb-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-navy/45">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-text-muted">
           Face recognition
         </p>
         <h2 className="font-display text-2xl text-navy">Match a photo to active cases</h2>
-        <p className="mt-1 text-sm text-navy/60">
+        <p className="mt-1 text-sm text-text-muted">
           Upload a clear, front-facing photo. We compare it to profile photos on active cases
           and show similarity scores. Assistive match only — not proof of identity.
         </p>
