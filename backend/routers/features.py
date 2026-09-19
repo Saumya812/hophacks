@@ -13,7 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from database import get_supabase
+from database import get_database
 from services.advanced import (
     activity_buckets,
     city_dashboard_stats,
@@ -93,13 +93,13 @@ class AudioRequest(BaseModel):
 
 @router.get("/live/tips")
 def live_tips(limit: int = Query(10, ge=1, le=50)):
-    """Homepage live tip feed (polling stand-in for SpacetimeDB)."""
+    """HTTP snapshot of the persistent tip feed; browser uses native subscriptions."""
     tips = get_live_tips(limit)
     return {
         "tips": tips,
-        "transport": "polling",
-        "spacetime": "unavailable",
-        "note": "Clients should poll every few seconds. SpacetimeDB not configured — this is a visibly identified fallback.",
+        "transport": "http_snapshot",
+        "spacetime": "primary_database",
+        "note": "Stored in SpacetimeDB. The homepage receives updates through a native subscription.",
     }
 
 
@@ -129,7 +129,7 @@ def case_heatmap_data(person_id: UUID):
     Provenance: community tips for this case (not NamUs).
     """
     rows = (
-        get_supabase()
+        get_database()
         .table("sightings")
         .select("id,location_lat,location_lng,description,date_time,credibility_score,created_at")
         .eq("person_id", str(person_id))
@@ -152,7 +152,7 @@ def case_heatmap_data(person_id: UUID):
 def case_heatmap_embed(person_id: UUID):
     """Folium HeatMap HTML for iframe embed (same viz as the marimo notebook)."""
     person = (
-        get_supabase()
+        get_database()
         .table("persons")
         .select("name")
         .eq("id", str(person_id))
@@ -162,7 +162,7 @@ def case_heatmap_embed(person_id: UUID):
         or [{}]
     )[0]
     rows = (
-        get_supabase()
+        get_database()
         .table("sightings")
         .select("id,location_lat,location_lng,description,date_time,credibility_score,created_at")
         .eq("person_id", str(person_id))
@@ -215,7 +215,7 @@ def platform_mentions(person_id: UUID):
     plus optional lookup raw mentions if none — here we classify tip text lightly.
     """
     rows = (
-        get_supabase()
+        get_database()
         .table("sightings")
         .select("description")
         .eq("person_id", str(person_id))
@@ -266,10 +266,10 @@ def create_nl_alert(payload: NLAlertCreate):
         "active": True,
     }
     try:
-        res = get_supabase().table("alert_subscriptions").insert(row).execute()
+        res = get_database().table("alert_subscriptions").insert(row).execute()
         return {"ok": True, "alert": (res.data or [row])[0]}
     except Exception as exc:
-        raise HTTPException(503, f"Alerts table unavailable — run migration 003. ({exc})") from exc
+        raise HTTPException(503, f"Alerts table unavailable — check SpacetimeDB connectivity and module publication. ({exc})") from exc
 
 
 @router.post("/alerts/zip")
@@ -281,15 +281,15 @@ def create_zip_alert(payload: ZipAlertCreate):
         "active": True,
     }
     try:
-        res = get_supabase().table("alert_subscriptions").insert(row).execute()
+        res = get_database().table("alert_subscriptions").insert(row).execute()
         return {"ok": True, "alert": (res.data or [row])[0]}
     except Exception as exc:
-        raise HTTPException(503, f"Alerts table unavailable — run migration 003. ({exc})") from exc
+        raise HTTPException(503, f"Alerts table unavailable — check SpacetimeDB connectivity and module publication. ({exc})") from exc
 
 
 @router.post("/alerts/watch")
 def watch_case(payload: CaseWatchCreate):
-    sb = get_supabase()
+    sb = get_database()
     pid = str(payload.person_id)
     email = str(payload.email)
     try:
@@ -324,14 +324,14 @@ def watch_case(payload: CaseWatchCreate):
         sb.table("persons").update({"watchers_count": n}).eq("id", pid).execute()
         return {"ok": True, "alert": (res.data or [row])[0], "watchers_count": n}
     except Exception as exc:
-        raise HTTPException(503, f"Watch unavailable — run migration 003. ({exc})") from exc
+        raise HTTPException(503, f"Watch unavailable — check SpacetimeDB connectivity and module publication. ({exc})") from exc
 
 
 # -------------------- case management --------------------
 
 @router.get("/persons/{person_id}/engagement")
 def engagement(person_id: UUID):
-    sb = get_supabase()
+    sb = get_database()
     p = sb.table("persons").select("*").eq("id", str(person_id)).limit(1).execute().data
     if not p:
         raise HTTPException(404, "Person not found")
@@ -348,21 +348,17 @@ def engagement(person_id: UUID):
 
 @router.post("/persons/{person_id}/share")
 def record_share(person_id: UUID):
-    sb = get_supabase()
+    sb = get_database()
     p = sb.table("persons").select("shares_count").eq("id", str(person_id)).limit(1).execute().data
     if not p:
         raise HTTPException(404, "Person not found")
-    n = int(p[0].get("shares_count") or 0) + 1
-    try:
-        sb.table("persons").update({"shares_count": n}).eq("id", str(person_id)).execute()
-    except Exception:
-        pass
-    return {"shares_count": n}
+    result = sb.table("persons").increment({"shares_count": 1}).eq("id", str(person_id)).execute()
+    return {"shares_count": result.data[0]["shares_count"]}
 
 
 @router.get("/persons/{person_id}/social-kit")
 def social_kit(person_id: UUID):
-    sb = get_supabase()
+    sb = get_database()
     p = sb.table("persons").select("*").eq("id", str(person_id)).limit(1).execute().data
     if not p:
         raise HTTPException(404, "Person not found")
@@ -390,7 +386,7 @@ def add_case_update(
     x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
 ):
     require_owner(person_id, x_owner_token)
-    sb = get_supabase()
+    sb = get_database()
     row = {
         "person_id": str(person_id),
         "body": payload.body,
@@ -399,7 +395,7 @@ def add_case_update(
     try:
         res = sb.table("case_updates").insert(row).execute()
     except Exception as exc:
-        raise HTTPException(503, f"case_updates missing — run migration 003 ({exc})") from exc
+        raise HTTPException(503, f"case_updates missing — check SpacetimeDB connectivity and module publication ({exc})") from exc
 
     # Broadcast to watchers
     watchers = (
@@ -432,7 +428,7 @@ def add_case_update(
 def list_updates(person_id: UUID):
     try:
         rows = (
-            get_supabase()
+            get_database()
             .table("case_updates")
             .select("*")
             .eq("person_id", str(person_id))
@@ -443,7 +439,7 @@ def list_updates(person_id: UUID):
         )
         return {"count": len(rows), "updates": rows}
     except Exception:
-        return {"count": 0, "updates": [], "note": "Run migration 003"}
+        return {"count": 0, "updates": [], "note": "SpacetimeDB unavailable"}
 
 
 class SourceLinkCreate(BaseModel):
@@ -466,7 +462,7 @@ def list_case_sources(person_id: UUID):
     """Read-only source library for a case (migration 005)."""
     try:
         rows = (
-            get_supabase()
+            get_database()
             .table("case_source_links")
             .select("*")
             .eq("person_id", str(person_id))
@@ -500,7 +496,7 @@ def add_case_source(
         "published_at": payload.published_at or None,
     }
     try:
-        res = get_supabase().table("case_source_links").insert(row).execute()
+        res = get_database().table("case_source_links").insert(row).execute()
     except Exception as exc:
         msg = str(exc).lower()
         if "unique" in msg or "duplicate" in msg:
@@ -517,7 +513,7 @@ def invite_coordinator(
 ):
     require_owner(person_id, x_owner_token)
     # Cap at 4 coordinators + implicit owner
-    sb = get_supabase()
+    sb = get_database()
     existing = sb.table("case_coordinators").select("id").eq("person_id", str(person_id)).execute().data or []
     if len(existing) >= 4:
         raise HTTPException(400, "Maximum 4 coordinators per case")
@@ -525,7 +521,7 @@ def invite_coordinator(
     try:
         res = sb.table("case_coordinators").insert(row).execute()
     except Exception as exc:
-        raise HTTPException(503, f"coordinators table missing — run migration 003 ({exc})") from exc
+        raise HTTPException(503, f"coordinators table missing — check SpacetimeDB connectivity and module publication ({exc})") from exc
     queue_email(
         str(payload.email),
         "You were invited as a FindMyPal case coordinator",
@@ -539,7 +535,7 @@ def invite_coordinator(
 def list_coordinators(person_id: UUID):
     try:
         rows = (
-            get_supabase()
+            get_database()
             .table("case_coordinators")
             .select("*")
             .eq("person_id", str(person_id))
@@ -559,7 +555,7 @@ def mark_found(
     x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
 ):
     require_owner(person_id, x_owner_token)
-    sb = get_supabase()
+    sb = get_database()
     update = {
         "status": "found",
         "found_at": utcnow().isoformat(),
@@ -598,7 +594,7 @@ def verify_police(
     number = (payload.police_report_number or "").strip()
     if not number:
         raise HTTPException(400, "Police report number is required to verify")
-    sb = get_supabase()
+    sb = get_database()
     res = (
         sb.table("persons")
         .update(
@@ -623,7 +619,7 @@ def renew_case(
 ):
     """90-day family confirmation."""
     require_owner(person_id, x_owner_token)
-    sb = get_supabase()
+    sb = get_database()
     res = (
         sb.table("persons")
         .update({"last_verified_at": utcnow().isoformat()})
@@ -637,13 +633,13 @@ def renew_case(
 
 @router.post("/persons/{person_id}/flag")
 def flag_suspicious(person_id: UUID, payload: FlagPayload):
-    sb = get_supabase()
+    sb = get_database()
     try:
         sb.table("profile_flags").insert(
             {"person_id": str(person_id), "reason": payload.reason}
         ).execute()
     except Exception as exc:
-        raise HTTPException(503, f"profile_flags missing — run migration 003 ({exc})") from exc
+        raise HTTPException(503, f"profile_flags missing — check SpacetimeDB connectivity and module publication ({exc})") from exc
     flags = sb.table("profile_flags").select("id").eq("person_id", str(person_id)).execute().data or []
     n = len(flags)
     update = {"suspicious_flags": n}
@@ -657,7 +653,7 @@ def flag_suspicious(person_id: UUID, payload: FlagPayload):
 def list_clusters(person_id: UUID):
     try:
         rows = (
-            get_supabase()
+            get_database()
             .table("tip_clusters")
             .select("*")
             .eq("person_id", str(person_id))
@@ -668,7 +664,7 @@ def list_clusters(person_id: UUID):
         )
         return {"count": len(rows), "clusters": rows}
     except Exception:
-        return {"count": 0, "clusters": [], "note": "Run migration 003"}
+        return {"count": 0, "clusters": [], "note": "SpacetimeDB unavailable"}
 
 
 # -------------------- Backboard memory --------------------
@@ -703,7 +699,7 @@ def case_audio(
     x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
 ):
     require_owner(person_id, x_owner_token)
-    sb = get_supabase()
+    sb = get_database()
     p = sb.table("persons").select("*").eq("id", str(person_id)).limit(1).execute().data
     if not p:
         raise HTTPException(404, "Person not found")

@@ -2,12 +2,12 @@
 Natural-language search route for FindMyPal.
 
 POST /search/natural — Gemini parses the query into filters, then we
-run the same Supabase query path as GET /persons (no raw SQL execution).
+run the same SpacetimeDB query path as GET /persons (no raw SQL execution).
 """
 
 from fastapi import APIRouter, HTTPException, status
 
-from database import get_supabase
+from database import get_database
 from schemas import (
     NaturalSearchRequest,
     NaturalSearchResponse,
@@ -29,7 +29,7 @@ def natural_search(payload: NaturalSearchRequest) -> NaturalSearchResponse:
     Pipeline:
       1. Send the free-text query to Gemini.
       2. Parse the response into NaturalSearchFilters.
-      3. Apply those filters via the Supabase query builder.
+      3. Apply those filters via the SpacetimeDB query builder.
       4. Return matching persons plus the inferred filters (for UI transparency).
     """
     try:
@@ -51,8 +51,8 @@ def natural_search(payload: NaturalSearchRequest) -> NaturalSearchResponse:
             detail=f"Gemini request failed: {exc}",
         ) from exc
 
-    supabase = get_supabase()
-    query = supabase.table("persons").select("*")
+    database = get_database()
+    query = database.table("persons").select("*")
 
     if filters.name:
         query = query.ilike("name", f"%{filters.name}%")

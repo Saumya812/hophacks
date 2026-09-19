@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
-from database import get_supabase
+from database import get_database
 from services.face_match import compare_faces, _download_image, _decode_photo
 from services.gemini_client import gemini_configured, get_generative_model
 
@@ -30,8 +30,8 @@ def generate_case_summary(person_id: str, *, persist: bool = False, refresh: boo
     POST refresh generates (Gemini if available) and persists.
     """
     try:
-        supabase = get_supabase()
-        person_res = supabase.table("persons").select("*").eq("id", person_id).limit(1).execute()
+        database = get_database()
+        person_res = database.table("persons").select("*").eq("id", person_id).limit(1).execute()
         if not person_res.data:
             return {
                 "person_id": person_id,
@@ -55,7 +55,7 @@ def generate_case_summary(person_id: str, *, persist: bool = False, refresh: boo
 
         try:
             sight_res = (
-                supabase.table("sightings")
+                database.table("sightings")
                 .select("*")
                 .eq("person_id", person_id)
                 .order("date_time", desc=False)
@@ -81,7 +81,7 @@ def generate_case_summary(person_id: str, *, persist: bool = False, refresh: boo
         persisted = False
         if persist:
             try:
-                supabase.table("persons").update(
+                database.table("persons").update(
                     {
                         "ai_summary": summary,
                         "ai_summary_updated_at": datetime.utcnow().isoformat() + "Z",
@@ -199,9 +199,9 @@ def find_duplicate_candidates(
     Check whether a similar active/found case already exists.
     Combines name similarity with optional photo matching.
     """
-    supabase = get_supabase()
+    database = get_database()
     rows = (
-        supabase.table("persons")
+        database.table("persons")
         .select("*")
         .in_("status", ["active", "found"])
         .execute()
@@ -330,7 +330,7 @@ def score_sighting_credibility(
     # Geographic clustering with existing tips
     try:
         existing = (
-            get_supabase()
+            get_database()
             .table("sightings")
             .select("location_lat,location_lng")
             .eq("person_id", person_id)

@@ -12,7 +12,7 @@ from datetime import date
 from typing import Any, Dict, Optional
 
 from config import get_settings
-from database import get_supabase
+from database import get_database
 from services.advanced import utcnow
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def remember_search(
     }
     # Prefer local mapping always for isolation; Backboard remote sync is optional future work
     try:
-        sb = get_supabase()
+        sb = get_database()
         existing = (
             sb.table("search_memory")
             .select("id")
@@ -71,7 +71,7 @@ def remember_search(
 def recall_search(participant_key: str) -> Dict[str, Any]:
     try:
         rows = (
-            get_supabase()
+            get_database()
             .table("search_memory")
             .select("*")
             .eq("participant_key", participant_key)
@@ -94,7 +94,7 @@ def recall_search(participant_key: str) -> Dict[str, Any]:
 
 def forget_search(participant_key: str) -> Dict[str, Any]:
     try:
-        get_supabase().table("search_memory").delete().eq("participant_key", participant_key).execute()
+        get_database().table("search_memory").delete().eq("participant_key", participant_key).execute()
         return {
             "ok": True,
             "forgotten": True,

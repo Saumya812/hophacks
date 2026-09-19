@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 
-from database import get_supabase
+from database import get_database
 
 # Survives as long as the process; also persisted on persons.owner_token when 004 ran
 _TOKENS: Dict[str, str] = {}
@@ -24,26 +24,8 @@ def remember_token(person_id: str, token: str) -> None:
 
 
 def _stored_token(person_id: str) -> Optional[str]:
-    pid = str(person_id)
-    if pid in _TOKENS:
-        return _TOKENS[pid]
-    try:
-        rows = (
-            get_supabase()
-            .table("persons")
-            .select("owner_token")
-            .eq("id", pid)
-            .limit(1)
-            .execute()
-            .data
-            or []
-        )
-        tok = (rows[0] or {}).get("owner_token") if rows else None
-        if tok:
-            _TOKENS[pid] = tok
-        return tok
-    except Exception:
-        return None
+    rows = get_database().table("persons").select("owner_token").eq("id", str(person_id)).limit(1).execute().data
+    return rows[0].get("owner_token") if rows else None
 
 
 def require_owner(person_id: UUID, x_owner_token: Optional[str] = None) -> None:

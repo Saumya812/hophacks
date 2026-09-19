@@ -6,17 +6,14 @@ from __future__ import annotations
 
 import logging
 import math
-from collections import deque
 from datetime import datetime, timedelta, timezone
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from database import get_supabase
+from database import get_database
 from services.geocode import geocode_query
 
 logger = logging.getLogger(__name__)
 
-# Process-local live tip ring buffer (SpacetimeDB stand-in until configured)
-_LIVE_FEED: Deque[Dict[str, Any]] = deque(maxlen=50)
 
 
 def utcnow() -> datetime:
@@ -47,7 +44,7 @@ def queue_email(to_email: str, subject: str, body: str, kind: str = "generic", m
         "delivery": "logged_only",
     }
     try:
-        get_supabase().table("email_outbox_log").insert(
+        get_database().table("email_outbox_log").insert(
             {
                 "to_email": to_email,
                 "subject": subject,
@@ -72,9 +69,8 @@ def push_live_tip(person_id: str, person_name: str, snippet: str) -> Dict[str, A
         "snippet": (snippet or "")[:180],
         "created_at": utcnow().isoformat(),
     }
-    _LIVE_FEED.appendleft(event)
     try:
-        get_supabase().table("live_tip_events").insert(
+        get_database().table("live_tip_events").insert(
             {
                 "person_id": person_id,
                 "person_name": person_name,
@@ -96,7 +92,7 @@ def notify_zip_alerts_for_new_case(person: Dict[str, Any]) -> int:
         return 0
     try:
         rows = (
-            get_supabase()
+            get_database()
             .table("alert_subscriptions")
             .select("email,zip_code")
             .eq("kind", "zip")
@@ -131,11 +127,9 @@ def notify_zip_alerts_for_new_case(person: Dict[str, Any]) -> int:
 
 
 def get_live_tips(limit: int = 10) -> List[Dict[str, Any]]:
-    if _LIVE_FEED:
-        return list(_LIVE_FEED)[:limit]
     try:
         rows = (
-            get_supabase()
+            get_database()
             .table("live_tip_events")
             .select("*")
             .order("created_at", desc=True)
@@ -150,7 +144,7 @@ def get_live_tips(limit: int = 10) -> List[Dict[str, Any]]:
         pass
     try:
         tips = (
-            get_supabase()
+            get_database()
             .table("sightings")
             .select("id,person_id,description,created_at")
             .order("created_at", desc=True)
@@ -164,7 +158,7 @@ def get_live_tips(limit: int = 10) -> List[Dict[str, Any]]:
             name = "Case"
             try:
                 p = (
-                    get_supabase()
+                    get_database()
                     .table("persons")
                     .select("name")
                     .eq("id", t["person_id"])
@@ -192,7 +186,7 @@ def get_live_tips(limit: int = 10) -> List[Dict[str, Any]]:
 
 
 def recompute_tips_count(person_id: str) -> int:
-    sb = get_supabase()
+    sb = get_database()
     rows = sb.table("sightings").select("id").eq("person_id", person_id).execute().data or []
     n = len(rows)
     try:
@@ -206,7 +200,7 @@ def detect_tip_cluster(person_id: str, lat: float, lng: float, when: datetime) -
     """
     If 3+ tips fall within ~1.5km and 48 hours, create a cluster alert.
     """
-    sb = get_supabase()
+    sb = get_database()
     rows = (
         sb.table("sightings")
         .select("*")
@@ -289,7 +283,7 @@ def match_nl_alerts_against_tip(description: str, person_id: str, person_name: s
     """Very simple keyword overlap matcher for NL alert queries."""
     try:
         alerts = (
-            get_supabase()
+            get_database()
             .table("alert_subscriptions")
             .select("*")
             .eq("kind", "natural_language")
@@ -326,7 +320,7 @@ def match_nl_alerts_against_tip(description: str, person_id: str, person_name: s
 
 def city_dashboard_stats() -> Dict[str, Any]:
     """Aggregate public stats — no private emails."""
-    sb = get_supabase()
+    sb = get_database()
     try:
         persons = sb.table("persons").select("id,status,last_seen_location,created_at,found_at").execute().data or []
     except Exception:
@@ -369,10 +363,10 @@ def city_dashboard_stats() -> Dict[str, Any]:
 def cross_case_patterns(radius_km: float = 2.0) -> Dict[str, Any]:
     """
     Snowflake-style cross-case geographic pattern detection.
-    Uses Supabase case data locally when Snowflake is not configured.
+    Uses SpacetimeDB case data locally when Snowflake is not configured.
     Labeled provenance: local_projection (not NamUs / not live Snowflake).
     """
-    sb = get_supabase()
+    sb = get_database()
     persons = (
         sb.table("persons")
         .select("id,name,status,last_seen_location")
@@ -424,7 +418,7 @@ def cross_case_patterns(radius_km: float = 2.0) -> Dict[str, Any]:
             )
 
     return {
-        "provenance": "local_supabase_projection",
+        "provenance": "spacetimedb_projection",
         "snowflake": "unavailable",
         "note": "Not a Snowflake warehouse query and not NamUs data. Demonstrates cross-case geographic clustering on demo cases.",
         "clusters": clusters,
@@ -433,7 +427,7 @@ def cross_case_patterns(radius_km: float = 2.0) -> Dict[str, Any]:
 
 def activity_buckets(person_id: str, bucket_hours: int = 24) -> Dict[str, Any]:
     rows = (
-        get_supabase()
+        get_database()
         .table("sightings")
         .select("date_time,created_at,credibility_score")
         .eq("person_id", person_id)
@@ -461,7 +455,7 @@ def activity_buckets(person_id: str, bucket_hours: int = 24) -> Dict[str, Any]:
         "bucket_hours": bucket_hours,
         "series": series,
         "total_tips": len(rows),
-        "provenance": "supabase_sightings",
+        "provenance": "spacetimedb_sightings",
         "marimo": "embed_via_frontend_charts",
         "note": "React activity explorer uses this API. Optional marimo notebook can consume the same route.",
     }

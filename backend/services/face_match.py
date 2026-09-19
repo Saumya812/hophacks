@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from config import get_settings
-from database import get_supabase
+from database import get_database
 from services.gemini_client import gemini_configured, get_generative_model
 
 logger = logging.getLogger(__name__)
@@ -217,9 +217,9 @@ def match_probe_against_active_cases(
             "unavailable": True,
         }
 
-    supabase = get_supabase()
+    database = get_database()
     result = (
-        supabase.table("persons")
+        database.table("persons")
         .select("*")
         .eq("status", "active")
         .not_.is_("photo_url", "null")

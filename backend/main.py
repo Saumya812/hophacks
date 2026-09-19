@@ -10,6 +10,8 @@ Interactive docs: http://localhost:8000/docs
 """
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from database import DatabaseError, get_database
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
@@ -63,3 +65,14 @@ def root():
 def health():
     """Liveness check for DigitalOcean / load balancers."""
     return {"status": "healthy"}
+
+
+@app.exception_handler(DatabaseError)
+async def database_error_handler(request, exc):
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+
+
+@app.get("/health/database", tags=["health"])
+def database_health():
+    get_database().table("persons").select("id").limit(1).execute()
+    return {"status": "healthy", "database": "spacetimedb"}

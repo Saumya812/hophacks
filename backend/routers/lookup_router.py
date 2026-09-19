@@ -37,7 +37,7 @@ from services.gemini_processor import (
 )
 from services.lookup_pdf import build_lookup_pdf
 from services.scraper_service import collect_raw_mentions
-from database import get_supabase
+from database import get_database
 
 router = APIRouter(prefix="/lookup", tags=["lookup"])
 
@@ -51,7 +51,7 @@ def _locations_from_matching_case(full_name: str) -> list[dict]:
     if len(name) < 2:
         return []
     try:
-        sb = get_supabase()
+        sb = get_database()
         parts = name.split()
         persons: list[dict] = []
 

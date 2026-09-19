@@ -12,7 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from database import get_supabase
+from database import get_database
 from schemas import PersonCreate, PersonListResponse, PersonOut
 from services.owner_auth import issue_owner_token, remember_token
 from services.advanced import notify_zip_alerts_for_new_case, queue_email
@@ -50,7 +50,7 @@ def _strip_list_photo(row: dict) -> dict:
     summary="Create a missing-person profile",
 )
 def create_person(payload: PersonCreate) -> PersonOut:
-    supabase = get_supabase()
+    database = get_database()
     data = payload.model_dump(mode="json")
     data["status"] = "active"
     token = issue_owner_token()
@@ -60,19 +60,7 @@ def create_person(payload: PersonCreate) -> PersonOut:
         data["verified_police_report"] = True
         data["last_verified_at"] = datetime.now(timezone.utc).isoformat()
 
-    result = None
-    try:
-        result = supabase.table("persons").insert(data).execute()
-    except Exception:
-        data.pop("owner_token", None)
-        data.pop("contact_email", None)
-        data.pop("last_seen_time", None)
-        data.pop("verified_police_report", None)
-        data.pop("source_listing_url", None)
-        data.pop("source_agency_name", None)
-        data.pop("external_case_number", None)
-        data.pop("source_last_checked_at", None)
-        result = supabase.table("persons").insert(data).execute()
+    result = database.table("persons").insert(data).execute()
 
     if not result.data:
         raise HTTPException(
@@ -93,7 +81,7 @@ def create_person(payload: PersonCreate) -> PersonOut:
     contact = (payload.contact_email and str(payload.contact_email)) or None
     if contact:
         try:
-            supabase.table("alert_subscriptions").insert(
+            database.table("alert_subscriptions").insert(
                 {
                     "kind": "case_watch",
                     "email": contact,
@@ -138,8 +126,8 @@ def list_persons(
             detail="age_max must be greater than or equal to age_min",
         )
 
-    supabase = get_supabase()
-    query = supabase.table("persons").select("*")
+    database = get_database()
+    query = database.table("persons").select("*")
 
     if q:
         safe = _escape_ilike(q)
@@ -176,9 +164,9 @@ def list_persons(
     summary="Get a single missing-person profile",
 )
 def get_person(person_id: UUID) -> PersonOut:
-    supabase = get_supabase()
+    database = get_database()
     result = (
-        supabase.table("persons")
+        database.table("persons")
         .select("*")
         .eq("id", str(person_id))
         .limit(1)
