@@ -3,13 +3,8 @@
 backend/.env
 *.pem
 
-# Python
-backend/.venv/
-backend/venv/
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
+# Audio cache (ElevenLabs demo)
+backend/.audio_cache/
 
 # Node / frontend
 frontend/node_modules/

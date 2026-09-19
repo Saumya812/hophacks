@@ -1,13 +1,18 @@
 /**
- * Leaflet map for a person profile.
- * - Red marker: last known location (geocoded from text, or fallback)
- * - Blue markers: submitted sightings with timestamps
+ * Leaflet map: last known (red), sightings (blue), optional movement path + heat radii.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  Circle,
+  useMap,
+} from 'react-leaflet'
 import L from 'leaflet'
 
-// Fix default marker icons broken by Vite bundling
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
@@ -37,7 +42,6 @@ const blueIcon = new L.Icon({
   shadowSize: [41, 41],
 })
 
-/** Fit map bounds whenever marker set changes */
 function FitBounds({ positions }) {
   const map = useMap()
   useEffect(() => {
@@ -51,20 +55,29 @@ function FitBounds({ positions }) {
   return null
 }
 
-/** Geocode free-text last_seen_location via OpenStreetMap Nominatim */
 async function geocode(query) {
   if (!query) return null
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
-  })
+  const res = await fetch(url, { headers: { Accept: 'application/json' } })
   if (!res.ok) return null
   const data = await res.json()
   if (!data?.length) return null
   return [parseFloat(data[0].lat), parseFloat(data[0].lon)]
 }
 
-export default function SightingsMap({ lastSeenLocation, sightings }) {
+/** Count how many other tips fall within ~1.5km for heat intensity */
+function heatWeight(sightings, s) {
+  let n = 0
+  for (const o of sightings) {
+    if (o.id === s.id) continue
+    const dlat = (o.location_lat - s.location_lat) * 111
+    const dlng = (o.location_lng - s.location_lng) * 85
+    if (Math.hypot(dlat, dlng) <= 1.5) n += 1
+  }
+  return n
+}
+
+export default function SightingsMap({ lastSeenLocation, sightings, showPath = true }) {
   const [lastKnown, setLastKnown] = useState(null)
   const [geoError, setGeoError] = useState('')
 
@@ -83,21 +96,23 @@ export default function SightingsMap({ lastSeenLocation, sightings }) {
     }
   }, [lastSeenLocation])
 
-  const sightingPositions = useMemo(
-    () =>
-      (sightings || [])
-        .filter((s) => s.location_lat != null && s.location_lng != null)
-        .map((s) => [s.location_lat, s.location_lng]),
-    [sightings],
+  const chronological = useMemo(() => {
+    return [...(sightings || [])]
+      .filter((s) => s.location_lat != null && s.location_lng != null)
+      .sort((a, b) => new Date(a.date_time) - new Date(b.date_time))
+  }, [sightings])
+
+  const pathPositions = useMemo(
+    () => chronological.map((s) => [s.location_lat, s.location_lng]),
+    [chronological],
   )
 
   const allPositions = useMemo(() => {
-    const pts = [...sightingPositions]
+    const pts = [...pathPositions]
     if (lastKnown) pts.push(lastKnown)
     return pts
-  }, [sightingPositions, lastKnown])
+  }, [pathPositions, lastKnown])
 
-  // Default center: Baltimore (project seed city) if nothing else is available
   const center = allPositions[0] || [39.2904, -76.6122]
 
   return (
@@ -120,18 +135,49 @@ export default function SightingsMap({ lastSeenLocation, sightings }) {
             </Marker>
           )}
 
-          {(sightings || []).map((s) => (
-            <Marker
-              key={s.id}
-              position={[s.location_lat, s.location_lng]}
-              icon={blueIcon}
-            >
+          {chronological.map((s) => {
+            const heat = heatWeight(chronological, s)
+            return (
+              <Circle
+                key={`heat-${s.id}`}
+                center={[s.location_lat, s.location_lng]}
+                radius={400 + heat * 350}
+                pathOptions={{
+                  color: '#1a2b4a',
+                  fillColor: '#1a2b4a',
+                  fillOpacity: Math.min(0.15 + heat * 0.12, 0.55),
+                  weight: 1,
+                }}
+              />
+            )
+          })}
+
+          {showPath && pathPositions.length >= 2 && (
+            <Polyline
+              positions={pathPositions}
+              pathOptions={{
+                color: '#1a2b4a',
+                dashArray: '8 10',
+                weight: 3,
+                opacity: 0.85,
+              }}
+            />
+          )}
+
+          {chronological.map((s) => (
+            <Marker key={s.id} position={[s.location_lat, s.location_lng]} icon={blueIcon}>
               <Popup>
                 <strong>Sighting</strong>
                 <br />
                 {new Date(s.date_time).toLocaleString()}
                 <br />
-                Confidence: {s.confidence_level}/5
+                Reporter confidence: {s.confidence_level}/5
+                {s.credibility_score != null && (
+                  <>
+                    <br />
+                    Credibility: {s.credibility_score}/10
+                  </>
+                )}
                 <br />
                 {s.description}
               </Popup>
@@ -140,7 +186,7 @@ export default function SightingsMap({ lastSeenLocation, sightings }) {
         </MapContainer>
       </div>
       <p className="text-xs text-navy/55">
-        Red = last known location · Blue = reported sightings
+        Red = last known · Blue = tips · Circles = local heat · Dotted line = chronological path
         {geoError ? ` · ${geoError}` : ''}
       </p>
     </div>

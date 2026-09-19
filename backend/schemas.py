@@ -59,6 +59,15 @@ class PersonOut(BaseModel):
     created_at: datetime
     ai_summary: Optional[str] = None
     ai_summary_updated_at: Optional[datetime] = None
+    verified_police_report: Optional[bool] = None
+    last_verified_at: Optional[datetime] = None
+    found_at: Optional[datetime] = None
+    found_message: Optional[str] = None
+    watchers_count: Optional[int] = None
+    shares_count: Optional[int] = None
+    tips_count: Optional[int] = None
+    suspicious_flags: Optional[int] = None
+    under_review: Optional[bool] = None
 
 
 class PersonListResponse(BaseModel):

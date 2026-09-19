@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 import { getPerson, listSightings, getCaseSummary, refreshCaseSummary } from '../api.js'
 import SightingsMap from '../components/SightingsMap.jsx'
 import FlyerButton from '../components/FlyerButton.jsx'
+import CaseToolsPanel from '../components/CaseToolsPanel.jsx'
 
 export default function PersonProfile() {
   const { id } = useParams()
@@ -216,6 +217,8 @@ export default function PersonProfile() {
           </ol>
         )}
       </section>
+
+      <CaseToolsPanel person={person} onPersonChange={setPerson} />
     </div>
   )
 }

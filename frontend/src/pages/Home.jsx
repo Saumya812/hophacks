@@ -7,6 +7,8 @@ import { Link } from 'react-router-dom'
 import { listPersons, naturalSearch } from '../api.js'
 import PersonCard from '../components/PersonCard.jsx'
 import FaceMatchPanel from '../components/FaceMatchPanel.jsx'
+import LiveTipFeed from '../components/LiveTipFeed.jsx'
+import AlertsAndMemoryPanel from '../components/AlertsAndMemoryPanel.jsx'
 
 export default function Home() {
   const [persons, setPersons] = useState([])
@@ -160,6 +162,11 @@ export default function Home() {
       </section>
 
       <FaceMatchPanel />
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px] lg:items-start">
+        <AlertsAndMemoryPanel />
+        <LiveTipFeed />
+      </div>
 
       {/* Search */}
       <section className="surface-panel p-5 sm:p-6">

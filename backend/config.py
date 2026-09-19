@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     rapidapi_key: str = ""
     twitter_rapidapi_host: str = "twitter-api45.p.rapidapi.com"
 
+    # Optional sponsor / advanced integrations
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_model: str = "eleven_monolingual_v1"
+    backboard_api_key: str = ""
+    spacetimedb_uri: str = ""
+    snowflake_account: str = ""
+
     # Comma-separated list of allowed frontend origins
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 

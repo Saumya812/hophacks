@@ -12,6 +12,13 @@ from fastapi import APIRouter, HTTPException, status
 from database import get_supabase
 from schemas import SightingCreate, SightingListResponse, SightingOut
 from services.intelligence import score_sighting_credibility
+from services.advanced import (
+    detect_tip_cluster,
+    match_nl_alerts_against_tip,
+    push_live_tip,
+    recompute_tips_count,
+)
+from datetime import datetime
 
 router = APIRouter(tags=["sightings"])
 
@@ -25,6 +32,37 @@ def _row_to_sighting(row: dict) -> SightingOut:
 
 
 _row_to_sighting_flexible = _row_to_sighting
+
+
+def _post_sighting_side_effects(supabase, person_id, payload, row: dict) -> None:
+    """Live feed, engagement, NL alerts, tip clustering — best effort."""
+    try:
+        person = (
+            supabase.table("persons")
+            .select("name")
+            .eq("id", str(person_id))
+            .limit(1)
+            .execute()
+            .data
+            or [{}]
+        )[0]
+        pname = person.get("name") or "Unknown"
+        push_live_tip(str(person_id), pname, payload.description)
+        recompute_tips_count(str(person_id))
+        match_nl_alerts_against_tip(payload.description, str(person_id), pname)
+        when = payload.date_time
+        if isinstance(when, str):
+            when = datetime.fromisoformat(when.replace("Z", "+00:00"))
+        cluster = detect_tip_cluster(
+            str(person_id),
+            payload.location_lat,
+            payload.location_lng,
+            when,
+        )
+        if cluster:
+            row["cluster_alert"] = cluster
+    except Exception:
+        pass
 
 
 def _ensure_person_exists(person_id: UUID) -> None:
@@ -90,6 +128,7 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
             row = dict(result.data[0])
             row.update(scored)
             row["credibility_reasons"] = "; ".join(scored.get("reasons") or [])
+            _post_sighting_side_effects(supabase, person_id, payload, row)
             return _row_to_sighting_flexible(row)
         raise
 
@@ -103,6 +142,7 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
     # Ensure response includes scoring even if DB omitted defaults
     row.setdefault("credibility_score", scored["credibility_score"])
     row.setdefault("family_review_flag", scored["family_review_flag"])
+    _post_sighting_side_effects(supabase, person_id, payload, row)
     return _row_to_sighting_flexible(row)
 
 

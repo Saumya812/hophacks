@@ -234,3 +234,13 @@ Local processes observed running during audit: FastAPI (`uvicorn` :8000), Vite (
 Will require: additive Supabase migrations (feedback, outbox, snapshots/reviews), profile-page panels (not new top-level product pages), SpacetimeDB publish/subscribe with refetch, Live/Reconnecting/Offline states, and evidence updates in `docs/sponsor-evidence.md`.
 
 Do **not** start S1 until explicitly requested.
+
+---
+
+## Advanced features implementation note (2026-09-19)
+
+A large “remaining features” batch was added on request (alerts, live polling feed, map path/heat, dashboard, social kit, coordinators, found flow, clustering, engagement, memory stand-in, ElevenLabs optional audio, police badge/flags/renew, marimo notebook).
+
+**Run migrations:** `002_intelligence.sql`, `003_advanced_features.sql`.
+
+Honest limits: SpacetimeDB = polling fallback; Snowflake patterns = local Supabase projection; Backboard = local `search_memory`; ElevenLabs/SMTP = unavailable without keys; emails are logged not sent.

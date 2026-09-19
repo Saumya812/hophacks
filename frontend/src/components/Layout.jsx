@@ -42,6 +42,9 @@ export default function Layout() {
             <NavLink to="/lookup" className={navClass}>
               Lookup
             </NavLink>
+            <NavLink to="/dashboard" className={navClass}>
+              Dashboard
+            </NavLink>
             <NavLink to="/report" className={navClass}>
               Report
             </NavLink>
