@@ -1,0 +1,22 @@
+[Unit]
+Description=FindMyPal FastAPI backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=findmypal
+Group=findmypal
+WorkingDirectory=/opt/findmypal/backend
+EnvironmentFile=/etc/findmypal/backend.env
+ExecStart=/opt/findmypal/venv/bin/uvicorn main:app --host 127.0.0.1 --port 3077
+Restart=always
+RestartSec=5
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/findmypal
+
+[Install]
+WantedBy=multi-user.target
