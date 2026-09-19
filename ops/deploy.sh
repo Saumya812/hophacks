@@ -30,6 +30,16 @@ if nginx -t; then
   systemctl reload nginx
 fi
 
-curl --fail --silent --show-error http://127.0.0.1:3077/health >/dev/null
+for attempt in {1..30}; do
+  if curl --fail --silent --show-error http://127.0.0.1:3077/health >/dev/null; then
+    break
+  fi
+  if [[ "$attempt" == 30 ]]; then
+    echo "FindMyPal backend did not become healthy in time" >&2
+    systemctl --no-pager --full status findmypal.service || true
+    exit 1
+  fi
+  sleep 1
+done
 test -f /var/www/findmypal/index.html
 echo "FindMyPal deployed at $(git -C "$APP_DIR" rev-parse --short HEAD)"
