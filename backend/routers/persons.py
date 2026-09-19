@@ -55,6 +55,7 @@ def create_person(payload: PersonCreate) -> PersonOut:
     data["status"] = "active"
     token = issue_owner_token()
     data["owner_token"] = token
+    # Police report # may set verified badge; original-source fields never do.
     if (data.get("police_report_number") or "").strip():
         data["verified_police_report"] = True
         data["last_verified_at"] = datetime.now(timezone.utc).isoformat()
@@ -67,6 +68,10 @@ def create_person(payload: PersonCreate) -> PersonOut:
         data.pop("contact_email", None)
         data.pop("last_seen_time", None)
         data.pop("verified_police_report", None)
+        data.pop("source_listing_url", None)
+        data.pop("source_agency_name", None)
+        data.pop("external_case_number", None)
+        data.pop("source_last_checked_at", None)
         result = supabase.table("persons").insert(data).execute()
 
     if not result.data:
@@ -122,6 +127,10 @@ def list_persons(
     age_min: Optional[int] = Query(None, ge=0, le=150),
     age_max: Optional[int] = Query(None, ge=0, le=150),
     status_filter: Optional[str] = Query("active", alias="status"),
+    sort: Optional[str] = Query(
+        "newest",
+        description="newest = created_at desc; last_seen = last_seen_date desc",
+    ),
 ) -> PersonListResponse:
     if age_min is not None and age_max is not None and age_max < age_min:
         raise HTTPException(
@@ -135,11 +144,12 @@ def list_persons(
     if q:
         safe = _escape_ilike(q)
         query = query.or_(f"name.ilike.*{safe}*,last_seen_location.ilike.*{safe}*")
-    else:
-        if name:
-            query = query.ilike("name", f"%{_escape_ilike(name)}%")
-        if location:
-            query = query.ilike("last_seen_location", f"%{_escape_ilike(location)}%")
+    elif name:
+        query = query.ilike("name", f"%{_escape_ilike(name)}%")
+
+    # Location can combine with q (AND) so homepage filters are not ignored
+    if location:
+        query = query.ilike("last_seen_location", f"%{_escape_ilike(location)}%")
 
     if age_min is not None:
         query = query.gte("age", age_min)
@@ -148,7 +158,12 @@ def list_persons(
     if status_filter and status_filter.lower() != "all":
         query = query.eq("status", status_filter.lower())
 
-    query = query.order("created_at", desc=True)
+    sort_key = (sort or "newest").lower().strip()
+    if sort_key in {"last_seen", "last_seen_date", "last-seen"}:
+        query = query.order("last_seen_date", desc=True)
+    else:
+        query = query.order("created_at", desc=True)
+
     result = query.execute()
     rows = result.data or []
     persons = [_row_to_person(_strip_list_photo(row)) for row in rows]

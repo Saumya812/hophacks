@@ -16,6 +16,10 @@ const empty = {
   photo_url: '',
   contact_email: '',
   police_report_number: '',
+  source_listing_url: '',
+  source_agency_name: '',
+  external_case_number: '',
+  source_last_checked_at: '',
   status: 'active',
 }
 
@@ -118,6 +122,13 @@ export default function Report() {
       contact_email: form.contact_email.trim() || null,
       status: 'active',
     }
+    const listing = form.source_listing_url.trim()
+    if (listing) payload.source_listing_url = listing
+    if (form.source_agency_name.trim()) payload.source_agency_name = form.source_agency_name.trim()
+    if (form.external_case_number.trim()) {
+      payload.external_case_number = form.external_case_number.trim()
+    }
+    if (form.source_last_checked_at) payload.source_last_checked_at = form.source_last_checked_at
     const created = await createPerson(payload)
     navigate(`/person/${created.id}`, { replace: true })
   }
@@ -154,18 +165,18 @@ export default function Report() {
     <div className="bg-cream pb-20 pt-10">
       <div className="mx-auto max-w-[680px] px-4 sm:px-6">
         <form onSubmit={handleSubmit} className="surface-card overflow-hidden">
-          <div className="bg-navy px-6 py-7 text-white sm:px-8">
-            <h1 className="font-display text-3xl sm:text-4xl">Report a missing person</h1>
-            <p className="mt-2 text-sm text-white/65 sm:text-base">
+          <div className="bg-navy px-8 py-7 text-white">
+            <h1 className="font-display text-[28px] font-semibold">Report a missing person</h1>
+            <p className="mt-2 text-sm text-white/75">
               This profile will be visible to the public. Please provide as much detail as
-              possible.
+              possible. We check for likely duplicate cases when you publish.
             </p>
           </div>
 
           <div className="space-y-0 px-6 py-2 sm:px-8">
             {/* Section 1 */}
             <section className="border-b border-border py-8">
-              <h2 className="font-display text-xl text-navy">Basic information</h2>
+              <p className="section-label">Basic information</p>
               <div className="mt-5 space-y-4">
                 <div>
                   <label className="label-field" htmlFor="name">
@@ -215,7 +226,7 @@ export default function Report() {
 
             {/* Section 2 */}
             <section className="border-b border-border py-8">
-              <h2 className="font-display text-xl text-navy">Last known location</h2>
+              <p className="section-label">Last known location</p>
               <div className="mt-5 space-y-4">
                 <div>
                   <label className="label-field" htmlFor="last_seen_location">
@@ -269,7 +280,7 @@ export default function Report() {
 
             {/* Section 3 */}
             <section className="border-b border-border py-8">
-              <h2 className="font-display text-xl text-navy">Description</h2>
+              <p className="section-label">Description</p>
               <div className="mt-5">
                 <label className="label-field" htmlFor="description">
                   Appearance & circumstances *
@@ -293,7 +304,7 @@ export default function Report() {
 
             {/* Section 4 */}
             <section className="border-b border-border py-8">
-              <h2 className="font-display text-xl text-navy">Photo</h2>
+              <p className="section-label">Photo</p>
               <div className="mt-5">
                 {form.photo_url ? (
                   <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-cream p-4">
@@ -366,8 +377,8 @@ export default function Report() {
             </section>
 
             {/* Section 5 */}
-            <section className="py-8">
-              <h2 className="font-display text-xl text-navy">Contact</h2>
+            <section className="border-b border-border py-8">
+              <p className="section-label">Contact</p>
               <div className="mt-5 space-y-4">
                 <div>
                   <label className="label-field" htmlFor="contact_email">
@@ -398,7 +409,71 @@ export default function Report() {
                   />
                   <p className="helper-text">
                     If you add a report number, this profile is marked Verified when it is published.
+                    Separate from any external listing reference below.
                   </p>
+                </div>
+              </div>
+            </section>
+
+            {/* Optional original listing — unobtrusive, does not verify */}
+            <section className="py-8">
+              <p className="section-label">Original listing (optional)</p>
+              <p className="mt-2 text-sm text-text-muted">
+                Community-provided source info only — a URL or reference number does not grant a
+                Verified badge.
+              </p>
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label className="label-field" htmlFor="source_listing_url">
+                    Original listing URL
+                  </label>
+                  <input
+                    id="source_listing_url"
+                    type="url"
+                    className="input-field min-h-12"
+                    placeholder="https://…"
+                    value={form.source_listing_url}
+                    onChange={(e) => update('source_listing_url', e.target.value)}
+                  />
+                  <p className="helper-text">HTTP or HTTPS only. We do not scrape this link.</p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="label-field" htmlFor="source_agency_name">
+                      Source / agency name
+                    </label>
+                    <input
+                      id="source_agency_name"
+                      className="input-field min-h-12"
+                      value={form.source_agency_name}
+                      onChange={(e) => update('source_agency_name', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="label-field" htmlFor="external_case_number">
+                      External case / reference #
+                    </label>
+                    <input
+                      id="external_case_number"
+                      className="input-field min-h-12"
+                      value={form.external_case_number}
+                      onChange={(e) => update('external_case_number', e.target.value)}
+                    />
+                    <p className="helper-text">Not the same as the police report number above.</p>
+                  </div>
+                </div>
+                <div>
+                  <label className="label-field" htmlFor="source_last_checked_at">
+                    Source last checked
+                  </label>
+                  <input
+                    id="source_last_checked_at"
+                    type="date"
+                    className="input-field min-h-12"
+                    value={form.source_last_checked_at}
+                    onChange={(e) => update('source_last_checked_at', e.target.value)}
+                  />
+                  <p className="helper-text">Date you last confirmed the listing was still online.</p>
                 </div>
               </div>
             </section>
@@ -463,7 +538,7 @@ export default function Report() {
                       : 'Publish case profile'}
               </button>
               <p className="mt-3 text-center text-xs text-text-muted">
-                False reports may have legal consequences. This platform must not be misused.
+                False reports may have legal consequences.
               </p>
             </div>
           </div>

@@ -43,12 +43,7 @@ function UploadIcon() {
 }
 
 function Spinner() {
-  return (
-    <div
-      className="h-12 w-12 animate-spin rounded-full border-[3px] border-navy/15 border-t-navy"
-      aria-hidden
-    />
-  )
+  return <div className="lookup-spinner" aria-hidden />
 }
 
 export default function Lookup() {
@@ -180,10 +175,10 @@ export default function Lookup() {
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-md text-sm font-bold transition-all ${
                       active
-                        ? 'bg-navy text-white gold-ring'
+                        ? 'bg-navy text-white'
                         : done
-                          ? 'bg-accent text-white hover:scale-105'
-                          : 'bg-border/60 text-text-muted'
+                          ? 'bg-gold text-white hover:scale-105'
+                          : 'bg-border text-text-muted'
                     }`}
                   >
                     {done ? '✓' : s.id}
@@ -197,9 +192,7 @@ export default function Lookup() {
                   </span>
                 </button>
                 {i < STEPS.length - 1 && (
-                  <div
-                    className={`mx-1 hidden h-px flex-1 sm:block ${done || active ? 'bg-accent' : 'bg-border'}`}
-                  />
+                  <div className="mx-1 hidden h-0.5 flex-1 bg-border sm:block" />
                 )}
               </li>
             )
@@ -210,7 +203,7 @@ export default function Lookup() {
         {step === 1 && (
           <form
             onSubmit={handleSearch}
-            className="surface-card mx-auto max-w-[680px] space-y-6 p-6 sm:p-8 fade-up"
+            className="surface-card mx-auto max-w-[680px] space-y-6 p-8 sm:p-10 fade-up"
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -263,21 +256,31 @@ export default function Lookup() {
                 className={`drop-zone ${dragOver ? 'drop-zone-active' : ''}`}
               >
                 {photoDataUrl ? (
-                  <>
+                  <div className="relative">
                     <img
                       src={photoDataUrl}
                       alt="Upload preview"
-                      className="mb-3 h-28 w-24 rounded-lg object-cover"
+                      className="h-20 w-20 rounded-lg object-cover"
                     />
-                    <p className="text-sm font-semibold text-navy">{photoName || 'Photo ready'}</p>
-                    <p className="mt-1 text-xs text-text-muted">Click or drop to replace</p>
-                  </>
+                    <button
+                      type="button"
+                      className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-navy text-xs text-white"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPhotoDataUrl(null)
+                        setPhotoName('')
+                        if (fileRef.current) fileRef.current.value = ''
+                      }}
+                      aria-label="Remove photo"
+                    >
+                      ×
+                    </button>
+                    <p className="mt-2 text-sm font-semibold text-navy">{photoName || 'Photo ready'}</p>
+                  </div>
                 ) : (
                   <>
                     <UploadIcon />
-                    <p className="mt-3 text-sm font-semibold text-navy">
-                      Optional photo — drag or click to browse
-                    </p>
+                    <p className="mt-3 text-sm font-semibold text-navy">Drop photo here</p>
                     <p className="mt-1 text-xs text-text-muted">JPG/PNG · max 2.5MB</p>
                   </>
                 )}
@@ -305,16 +308,16 @@ export default function Lookup() {
 
         {/* STEP 2 */}
         {step === 2 && (
-          <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-16 text-center">
+          <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-20 text-center">
             <Spinner />
             <p className="mt-6 font-display text-2xl text-navy">Searching public sources</p>
             <p className="mt-2 text-sm text-text-muted" aria-live="polite">
               {STATUS_MESSAGES[statusIdx]}
             </p>
-            <div className="mt-8 h-2 w-full overflow-hidden rounded-full bg-cream ring-1 ring-border">
+            <div className="lookup-progress-track mt-8">
               <div
-                className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
-                style={{ width: `${progress}%` }}
+                className="h-full rounded-[3px] bg-gold transition-[width] duration-500 ease-out"
+                style={{ width: `${Math.max(progress, 4)}%` }}
               />
             </div>
             <button type="button" className="btn-secondary mt-8" onClick={resetAll}>

@@ -47,6 +47,22 @@ class PersonCreate(BaseModel):
     police_report_number: Optional[str] = Field(None, max_length=100)
     contact_email: Optional[EmailStr] = None
     last_seen_time: Optional[str] = Field(None, max_length=20)
+    # Optional original listing (community-provided — does NOT set Verified badge)
+    source_listing_url: Optional[str] = Field(None, max_length=2000)
+    source_agency_name: Optional[str] = Field(None, max_length=200)
+    external_case_number: Optional[str] = Field(None, max_length=100)
+    source_last_checked_at: Optional[date] = None
+
+    @field_validator("source_listing_url")
+    @classmethod
+    def _http_source_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not str(v).strip():
+            return None
+        s = str(v).strip()
+        low = s.lower()
+        if not (low.startswith("http://") or low.startswith("https://")):
+            raise ValueError("source_listing_url must be an http(s) URL")
+        return s
 
 
 class PersonOut(BaseModel):
@@ -76,6 +92,10 @@ class PersonOut(BaseModel):
     under_review: Optional[bool] = None
     contact_email: Optional[str] = None
     last_seen_time: Optional[str] = None
+    source_listing_url: Optional[str] = None
+    source_agency_name: Optional[str] = None
+    external_case_number: Optional[str] = None
+    source_last_checked_at: Optional[date] = None
     # Only returned on POST /persons — never on public list/get
     owner_token: Optional[str] = None
 

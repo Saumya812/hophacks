@@ -129,7 +129,7 @@ export default function CaseToolsPanel({ person, onPersonChange }) {
         {social && (
           <div className="mt-3 space-y-2">
             {Object.entries(social.posts || {}).map(([platform, text]) => (
-              <div key={platform} className="border border-navy/10 bg-white p-3">
+              <div key={platform} className="border border-navy/10 bg-cream p-3">
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wide text-navy/50">
                     {platform}

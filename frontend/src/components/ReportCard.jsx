@@ -11,11 +11,11 @@ const PLATFORM_COLORS = {
   tiktok: '#111111',
   x: '#111111',
   twitter: '#111111',
-  reddit: '#FF4500',
-  youtube: '#FF0000',
-  news: '#2563eb',
+  reddit: '#ff4500',
+  youtube: '#dc2626',
+  news: '#1a2b4a',
   google: '#1a2b4a',
-  web: '#4d6786',
+  web: '#6b7280',
 }
 
 function confidenceBadge(level) {
@@ -283,13 +283,21 @@ export default function ReportCard({ report }) {
           </p>
         ) : (
           <ol className="space-y-3">
-            {sightings.map((s, idx) => (
-              <li key={`${s.url}-${idx}`} className="surface-card p-4">
+            {sightings.map((s, idx) => {
+              const conf = (s.confidence || 'low').toLowerCase()
+              const border =
+                conf === 'high'
+                  ? 'border-l-4 border-l-gold'
+                  : conf === 'medium'
+                    ? 'border-l-4 border-l-misty'
+                    : 'border-l-4 border-l-border'
+              return (
+              <li key={`${s.url}-${idx}`} className={`surface-card p-4 ${border}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <PlatformBadge source={s.source} />
                   <div className="flex items-center gap-2">
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase ${confidenceBadge(s.confidence)}`}
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-bold uppercase ${confidenceBadge(s.confidence)}`}
                     >
                       {s.confidence || 'low'}
                     </span>
@@ -315,7 +323,8 @@ export default function ReportCard({ report }) {
                   </a>
                 )}
               </li>
-            ))}
+              )
+            })}
           </ol>
         )}
       </section>

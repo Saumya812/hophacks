@@ -1,14 +1,27 @@
 /**
  * Person profile — navy hero + tabbed Overview / Tips & Map / Web Intel / Family Tools.
  */
-import { Component, useEffect, useState } from 'react'
+import { Component, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getPerson, listSightings, getCaseSummary, refreshCaseSummary, API_BASE } from '../api.js'
+import { listCaseUpdates } from '../advancedApi.js'
 import SightingsMap from '../components/SightingsMap.jsx'
 import FlyerButton from '../components/FlyerButton.jsx'
 import CaseToolsPanel from '../components/CaseToolsPanel.jsx'
 import CaseWebIntelPanel from '../components/CaseWebIntelPanel.jsx'
 import DensityHeatMap from '../components/DensityHeatMap.jsx'
+import OriginalSourcePanel from '../components/OriginalSourcePanel.jsx'
+import HowYouCanHelp from '../components/HowYouCanHelp.jsx'
+import CaseFreshness from '../components/CaseFreshness.jsx'
+import CaseSourceLibrary from '../components/CaseSourceLibrary.jsx'
+import SaveCaseButton from '../components/SaveCaseButton.jsx'
+import {
+  caseUpdateLabel,
+  compareTimelineEvents,
+  formatEventDate,
+  formatEventDateTime,
+  safeHttpUrl,
+} from '../lib/caseHelpers.js'
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -50,6 +63,7 @@ export default function PersonProfile() {
   const { id } = useParams()
   const [person, setPerson] = useState(null)
   const [sightings, setSightings] = useState([])
+  const [updates, setUpdates] = useState([])
   const [summary, setSummary] = useState(null)
   const [summaryBusy, setSummaryBusy] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -74,6 +88,15 @@ export default function PersonProfile() {
         } catch {
           if (!cancelled) setSightings([])
         }
+
+        // Optional — must not block profile / timeline tips
+        listCaseUpdates(id)
+          .then((data) => {
+            if (!cancelled) setUpdates(data.updates || [])
+          })
+          .catch(() => {
+            if (!cancelled) setUpdates([])
+          })
 
         getCaseSummary(id)
           .then((sum) => {
@@ -130,6 +153,53 @@ export default function PersonProfile() {
     setTimeout(() => setShareMsg(''), 2500)
   }
 
+  const timeline = useMemo(() => {
+    if (!person) return []
+    const items = [
+      {
+        id: 'last-seen',
+        kind: 'last',
+        label: 'Reported last seen',
+        when: person.last_seen_date,
+        whenDisplay: formatEventDate(person.last_seen_date),
+        text: person.last_seen_location,
+        sourceUrl: safeHttpUrl(person.source_listing_url),
+        meta: person.last_seen_time
+          ? `Approximate time: ${person.last_seen_time}`
+          : null,
+      },
+      ...sightings.map((s) => ({
+        id: `tip-${s.id}`,
+        kind: 'tip',
+        label: s.family_review_flag
+          ? 'Community tip — unverified · flagged for family review'
+          : 'Community tip — unverified',
+        when: s.date_time,
+        whenDisplay: formatEventDateTime(s.date_time),
+        submittedDisplay: formatEventDateTime(s.created_at),
+        text: s.description,
+        high: Boolean(s.family_review_flag),
+        reasons: s.credibility_reasons,
+        meta: [
+          s.confidence_level != null ? `Reporter confidence ${s.confidence_level}/5` : null,
+          s.credibility_score != null ? `Credibility ${s.credibility_score}/10` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      })),
+      ...updates.map((u) => ({
+        id: `upd-${u.id}`,
+        kind: 'update',
+        label: caseUpdateLabel(u, person),
+        when: u.created_at,
+        whenDisplay: formatEventDateTime(u.created_at),
+        text: u.body,
+        meta: u.author_email ? `Posted by ${u.author_email}` : null,
+      })),
+    ]
+    return items.sort(compareTimelineEvents)
+  }, [person, sightings, updates])
+
   if (loading) {
     return <p className="page-pad text-text-muted">Loading profile…</p>
   }
@@ -143,28 +213,6 @@ export default function PersonProfile() {
   if (!person) return null
 
   const isActive = (person.status || '').toLowerCase() === 'active'
-  const timeline = [
-    {
-      id: 'last-seen',
-      label: 'Last known',
-      when: person.last_seen_date,
-      text: person.last_seen_location,
-      kind: 'last',
-    },
-    ...sightings.map((s) => ({
-      id: s.id,
-      label: s.family_review_flag
-        ? `Sighting · credibility ${s.credibility_score ?? '—'}/10 · family review`
-        : `Sighting · credibility ${s.credibility_score ?? '—'}/10 · reporter ${s.confidence_level}/5`,
-      when: s.date_time,
-      text: s.description,
-      kind: 'sighting',
-      high: Boolean(s.family_review_flag),
-      reasons: s.credibility_reasons,
-      location: null,
-      confidence: s.confidence_level,
-    })),
-  ]
 
   return (
     <div className="bg-cream pb-20">
@@ -199,7 +247,9 @@ export default function PersonProfile() {
             </p>
             <p className="text-[13px] font-medium text-accent">
               Last seen · {person.last_seen_location}
-              {person.last_seen_date ? ` · ${person.last_seen_date}` : ''}
+              {person.last_seen_date
+                ? ` · ${formatEventDate(person.last_seen_date) || person.last_seen_date}`
+                : ''}
               {person.last_seen_time ? ` · ${person.last_seen_time}` : ''}
             </p>
             <div className="flex flex-wrap gap-3 pt-1">
@@ -209,6 +259,10 @@ export default function PersonProfile() {
               <button type="button" className="btn-outline-white" onClick={shareCase}>
                 Share case
               </button>
+              <SaveCaseButton
+                personId={person.id}
+                className="rounded-lg border border-white/40 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              />
               {shareMsg && <span className="self-center text-xs text-white/60">{shareMsg}</span>}
             </div>
           </div>
@@ -223,7 +277,7 @@ export default function PersonProfile() {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`shrink-0 border-b-2 px-4 py-3.5 text-sm font-semibold transition-colors ${
+              className={`shrink-0 border-b-2 px-4 py-3.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy ${
                 tab === t.id
                   ? 'border-navy text-navy'
                   : 'border-transparent text-text-muted hover:text-navy'
@@ -238,6 +292,14 @@ export default function PersonProfile() {
       <div className="page-pad pt-8 fade-up" key={tab}>
         {tab === 'overview' && (
           <div className="space-y-6">
+            <PanelErrorBoundary fallback="Help panel failed.">
+              <HowYouCanHelp person={person} onShare={shareCase} />
+            </PanelErrorBoundary>
+
+            <PanelErrorBoundary fallback="Freshness panel failed.">
+              <CaseFreshness person={person} sightings={sightings} updates={updates} />
+            </PanelErrorBoundary>
+
             <section className="surface-card p-5 sm:p-6">
               <h2 className="font-display text-2xl text-navy">Description</h2>
               <p className="mt-3 leading-relaxed text-text-primary">{person.description}</p>
@@ -248,7 +310,9 @@ export default function PersonProfile() {
                 </div>
                 <div>
                   <dt className="font-semibold text-navy">Last seen date</dt>
-                  <dd className="text-text-muted">{person.last_seen_date}</dd>
+                  <dd className="text-text-muted">
+                    {formatEventDate(person.last_seen_date) || 'Unknown'}
+                  </dd>
                 </div>
                 {person.police_report_number && (
                   <div>
@@ -258,6 +322,10 @@ export default function PersonProfile() {
                 )}
               </dl>
             </section>
+
+            <PanelErrorBoundary fallback="Original source panel failed.">
+              <OriginalSourcePanel person={person} />
+            </PanelErrorBoundary>
 
             <section className="surface-card border-l-4 border-l-navy p-5 sm:p-6">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -294,36 +362,67 @@ export default function PersonProfile() {
 
             <section className="surface-card p-5 sm:p-6">
               <h2 className="font-display text-2xl text-navy">Timeline of updates</h2>
+              <p className="mt-1 text-xs text-text-muted">
+                Event dates stay separate from submission times. Tips are community-provided and
+                unverified.
+              </p>
               {timeline.length === 0 ? (
-                <p className="mt-3 text-text-muted">No events yet.</p>
+                <p className="mt-4 text-text-muted">
+                  No timeline events yet. Reported last-seen details, tips, and case updates will
+                  appear here.
+                </p>
               ) : (
                 <ol className="mt-4 space-y-0 border-l-2 border-border pl-4">
                   {timeline.map((item) => (
-                    <li key={item.id} className="relative pb-5">
+                    <li key={item.id} className="relative pb-5" id={item.id}>
                       <span
                         className={`absolute -left-[1.35rem] top-1.5 h-2.5 w-2.5 rounded-full ${
                           item.kind === 'last'
                             ? 'bg-danger'
-                            : item.high
-                              ? 'bg-success'
-                              : 'bg-navy'
+                            : item.kind === 'update'
+                              ? 'bg-accent'
+                              : item.high
+                                ? 'bg-success'
+                                : 'bg-navy'
                         }`}
                       />
                       <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                         {item.label}
                       </p>
                       <p className="text-sm text-text-muted">
-                        {item.when ? new Date(item.when).toLocaleString() : '—'}
+                        Event:{' '}
+                        {item.whenDisplay || 'Unknown'}
+                        {item.submittedDisplay &&
+                        item.submittedDisplay !== item.whenDisplay
+                          ? ` · Submitted: ${item.submittedDisplay}`
+                          : ''}
                       </p>
                       <p className="mt-1 text-text-primary">{item.text}</p>
+                      {item.meta && (
+                        <p className="mt-1 text-xs text-text-muted">{item.meta}</p>
+                      )}
                       {item.reasons && (
                         <p className="mt-1 text-xs text-text-muted">{item.reasons}</p>
+                      )}
+                      {item.sourceUrl && (
+                        <a
+                          href={item.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-block text-xs font-semibold text-navy underline"
+                        >
+                          Original listing
+                        </a>
                       )}
                     </li>
                   ))}
                 </ol>
               )}
             </section>
+
+            <PanelErrorBoundary fallback="Source library failed.">
+              <CaseSourceLibrary personId={person.id} />
+            </PanelErrorBoundary>
           </div>
         )}
 
@@ -335,6 +434,8 @@ export default function PersonProfile() {
                 <SightingsMap
                   key={`map-${person.id}`}
                   lastSeenLocation={person.last_seen_location}
+                  lastSeenDate={person.last_seen_date}
+                  sourceListingUrl={person.source_listing_url}
                   sightings={sightings}
                 />
               </PanelErrorBoundary>
@@ -386,10 +487,10 @@ export default function PersonProfile() {
                   {[...sightings]
                     .sort((a, b) => new Date(b.date_time || 0) - new Date(a.date_time || 0))
                     .map((s) => (
-                      <li key={s.id} className="surface-card p-4">
+                      <li key={s.id} id={`tip-${s.id}`} className="surface-card p-4">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full bg-navy/10 px-2.5 py-0.5 text-[11px] font-bold uppercase text-navy">
-                            Confidence {s.confidence_level}/5
+                            Unverified tip · confidence {s.confidence_level}/5
                           </span>
                           {s.credibility_score != null && (
                             <span className="text-xs text-text-muted">
@@ -403,7 +504,10 @@ export default function PersonProfile() {
                             : 'Location on file'}
                         </p>
                         <p className="mt-1 text-xs text-text-muted">
-                          {s.date_time ? new Date(s.date_time).toLocaleString() : '—'}
+                          Event: {formatEventDateTime(s.date_time) || 'Unknown'}
+                          {s.created_at
+                            ? ` · Submitted: ${formatEventDateTime(s.created_at) || 'Unknown'}`
+                            : ''}
                         </p>
                         <p className="mt-2 text-sm text-text-primary">{s.description}</p>
                       </li>
