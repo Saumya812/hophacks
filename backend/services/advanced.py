@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 from database import get_supabase
+from services.geocode import geocode_query
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,50 @@ def push_live_tip(person_id: str, person_name: str, snippet: str) -> Dict[str, A
     return event
 
 
+def notify_zip_alerts_for_new_case(person: Dict[str, Any]) -> int:
+    """Log notifications for zip subscribers near a newly created case."""
+    loc = (person.get("last_seen_location") or "").strip()
+    if not loc:
+        return 0
+    hit = geocode_query(loc)
+    if not hit:
+        return 0
+    try:
+        rows = (
+            get_supabase()
+            .table("alert_subscriptions")
+            .select("email,zip_code")
+            .eq("kind", "zip")
+            .eq("active", True)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        return 0
+    sent = 0
+    for a in rows:
+        z = (a.get("zip_code") or "").strip()
+        if not z:
+            continue
+        zhit = geocode_query(z)
+        if not zhit:
+            continue
+        km = haversine_km(hit["lat"], hit["lng"], zhit["lat"], zhit["lng"])
+        if km <= 40:
+            queue_email(
+                a["email"],
+                "FindMyPal — new case near your zip",
+                f"A new active case ({person.get('name')}) was reported near {loc} "
+                f"(~{km:.0f} km from {z}). This message is logged on the server; "
+                "SMTP is not configured unless you add it.",
+                kind="zip_alert",
+                meta={"person_id": person.get("id"), "zip": z},
+            )
+            sent += 1
+    return sent
+
+
 def get_live_tips(limit: int = 10) -> List[Dict[str, Any]]:
     if _LIVE_FEED:
         return list(_LIVE_FEED)[:limit]
@@ -99,8 +144,50 @@ def get_live_tips(limit: int = 10) -> List[Dict[str, Any]]:
             .data
             or []
         )
-        return rows
+        if rows:
+            return rows
     except Exception:  # noqa: BLE001
+        pass
+    try:
+        tips = (
+            get_supabase()
+            .table("sightings")
+            .select("id,person_id,description,created_at")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+        out = []
+        for t in tips:
+            name = "Case"
+            try:
+                p = (
+                    get_supabase()
+                    .table("persons")
+                    .select("name")
+                    .eq("id", t["person_id"])
+                    .limit(1)
+                    .execute()
+                    .data
+                    or []
+                )
+                if p:
+                    name = p[0].get("name") or name
+            except Exception:
+                pass
+            out.append(
+                {
+                    "id": t.get("id"),
+                    "person_id": t.get("person_id"),
+                    "person_name": name,
+                    "snippet": (t.get("description") or "")[:180],
+                    "created_at": t.get("created_at"),
+                }
+            )
+        return out
+    except Exception:
         return []
 
 

@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 # AI Case Summarizer
 # ---------------------------------------------------------------------------
 
-def generate_case_summary(person_id: str) -> Dict[str, Any]:
+def generate_case_summary(person_id: str, *, persist: bool = False, refresh: bool = False) -> Dict[str, Any]:
     """
     Build a one-paragraph plain-English summary from person + sightings.
-    Persists to persons.ai_summary when the column exists.
-    Never raises for transient Supabase/Gemini failures (profile must stay usable).
+    GET uses stored/heuristic text (no Gemini, no write).
+    POST refresh generates (Gemini if available) and persists.
     """
     try:
         supabase = get_supabase()
@@ -42,6 +42,17 @@ def generate_case_summary(person_id: str) -> Dict[str, Any]:
                 "generated_at": datetime.utcnow().isoformat() + "Z",
             }
         person = person_res.data[0]
+        if not refresh and person.get("ai_summary"):
+            return {
+                "person_id": person_id,
+                "summary": person["ai_summary"],
+                "engine": "stored",
+                "sighting_count": 0,
+                "persisted": True,
+                "generated_at": person.get("ai_summary_updated_at")
+                or datetime.utcnow().isoformat() + "Z",
+            }
+
         try:
             sight_res = (
                 supabase.table("sightings")
@@ -55,7 +66,7 @@ def generate_case_summary(person_id: str) -> Dict[str, Any]:
             logger.warning("Sightings fetch for summary failed: %s", exc)
             sightings = []
 
-        if not gemini_configured():
+        if not gemini_configured() or not refresh:
             summary = _heuristic_summary(person, sightings)
             engine = "heuristic"
         else:
@@ -67,17 +78,18 @@ def generate_case_summary(person_id: str) -> Dict[str, Any]:
                 summary = _heuristic_summary(person, sightings)
                 engine = "heuristic_fallback"
 
-        # Best-effort persist (column may not exist yet)
-        try:
-            supabase.table("persons").update(
-                {
-                    "ai_summary": summary,
-                    "ai_summary_updated_at": datetime.utcnow().isoformat() + "Z",
-                }
-            ).eq("id", person_id).execute()
-            persisted = True
-        except Exception:  # noqa: BLE001
-            persisted = False
+        persisted = False
+        if persist:
+            try:
+                supabase.table("persons").update(
+                    {
+                        "ai_summary": summary,
+                        "ai_summary_updated_at": datetime.utcnow().isoformat() + "Z",
+                    }
+                ).eq("id", person_id).execute()
+                persisted = True
+            except Exception:  # noqa: BLE001
+                persisted = False
 
         return {
             "person_id": person_id,

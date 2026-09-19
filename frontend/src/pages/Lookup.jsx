@@ -103,11 +103,6 @@ export default function Lookup() {
       setError('Enter both first and last name.')
       return
     }
-    if (!photoDataUrl) {
-      setError('Upload a clear, front-facing photo to continue.')
-      return
-    }
-
     setError('')
     setReport(null)
     setStep(2)
@@ -120,7 +115,7 @@ export default function Lookup() {
         name: `${first} ${last}`,
         first_name: first,
         last_name: last,
-        photo: photoDataUrl,
+        photo: photoDataUrl || undefined,
       })
       if (abortRef.current) return
       setProgress(100)
@@ -153,8 +148,10 @@ export default function Lookup() {
           </p>
           <h1 className="mt-2 font-display text-3xl text-navy sm:text-4xl">Person Lookup</h1>
           <p className="mt-2 text-sm leading-relaxed text-text-muted sm:text-base">
-            Upload a photo and name. FindMyPal searches publicly indexed web and social sources,
-            then compiles a structured sighting brief. Photos are kept only for this session.
+            Enter a first and last name. A photo is optional and is used for the report header
+            and visual matching when available. FindMyPal searches publicly indexed web and social
+            sources, then compiles a structured sighting brief. Photos are kept only for this
+            session.
           </p>
         </div>
 
@@ -279,7 +276,7 @@ export default function Lookup() {
                   <>
                     <UploadIcon />
                     <p className="mt-3 text-sm font-semibold text-navy">
-                      Drag photo here or click to browse
+                      Optional photo — drag or click to browse
                     </p>
                     <p className="mt-1 text-xs text-text-muted">JPG/PNG · max 2.5MB</p>
                   </>

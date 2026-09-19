@@ -59,7 +59,7 @@ def check_duplicates(payload: DuplicateCheckRequest) -> Dict[str, Any]:
 @router.get("/persons/{person_id}/summary", summary="AI case summary")
 def get_case_summary(person_id: UUID) -> Dict[str, Any]:
     try:
-        return generate_case_summary(str(person_id))
+        return generate_case_summary(str(person_id), persist=False, refresh=False)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -67,6 +67,6 @@ def get_case_summary(person_id: UUID) -> Dict[str, Any]:
 @router.post("/persons/{person_id}/summary/refresh", summary="Regenerate AI case summary")
 def refresh_case_summary(person_id: UUID) -> Dict[str, Any]:
     try:
-        return generate_case_summary(str(person_id))
+        return generate_case_summary(str(person_id), persist=True, refresh=True)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

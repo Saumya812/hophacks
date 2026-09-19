@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     mock_user_id: str = "00000000-0000-0000-0000-000000000001"
     mock_user_email: str = "mock@findmypal.local"
 
+    # If true, use first X-Forwarded-For hop for Lookup rate limits (behind a real proxy)
+    trust_proxy: bool = False
+
     @property
     def cors_origin_list(self) -> List[str]:
         """Parse CORS_ORIGINS into a clean list of origins."""

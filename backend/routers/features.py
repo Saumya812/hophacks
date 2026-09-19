@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, EmailStr, Field
 
@@ -30,7 +30,8 @@ from services.heatmap import (
     points_from_lookup_locations,
     points_from_sighting_rows,
 )
-from services.geocode import geocode_query
+from routers.persons import _row_to_person
+from services.owner_auth import require_owner
 from pathlib import Path
 
 router = APIRouter(tags=["advanced"])
@@ -288,17 +289,38 @@ def create_zip_alert(payload: ZipAlertCreate):
 @router.post("/alerts/watch")
 def watch_case(payload: CaseWatchCreate):
     sb = get_supabase()
-    row = {
-        "kind": "case_watch",
-        "email": str(payload.email),
-        "person_id": str(payload.person_id),
-        "active": True,
-    }
+    pid = str(payload.person_id)
+    email = str(payload.email)
     try:
-        res = sb.table("alert_subscriptions").insert(row).execute()
-        person = sb.table("persons").select("watchers_count").eq("id", str(payload.person_id)).limit(1).execute().data
-        n = int((person or [{}])[0].get("watchers_count") or 0) + 1
-        sb.table("persons").update({"watchers_count": n}).eq("id", str(payload.person_id)).execute()
+        existing = (
+            sb.table("alert_subscriptions")
+            .select("id,email")
+            .eq("kind", "case_watch")
+            .eq("person_id", pid)
+            .eq("active", True)
+            .execute()
+            .data
+            or []
+        )
+        person = sb.table("persons").select("watchers_count").eq("id", pid).limit(1).execute().data
+        n = int((person or [{}])[0].get("watchers_count") or 0)
+        if any((x.get("email") or "").lower() == email.lower() for x in existing):
+            return {"ok": True, "already_watching": True, "watchers_count": n}
+        row = {
+            "kind": "case_watch",
+            "email": email,
+            "person_id": pid,
+            "active": True,
+        }
+        try:
+            res = sb.table("alert_subscriptions").insert(row).execute()
+        except Exception as ins_exc:
+            msg = str(ins_exc).lower()
+            if "unique" in msg or "duplicate" in msg:
+                return {"ok": True, "already_watching": True, "watchers_count": n}
+            raise
+        n = n + 1
+        sb.table("persons").update({"watchers_count": n}).eq("id", pid).execute()
         return {"ok": True, "alert": (res.data or [row])[0], "watchers_count": n}
     except Exception as exc:
         raise HTTPException(503, f"Watch unavailable — run migration 003. ({exc})") from exc
@@ -361,7 +383,12 @@ def social_kit(person_id: UUID):
 
 
 @router.post("/persons/{person_id}/updates")
-def add_case_update(person_id: UUID, payload: CaseUpdateCreate):
+def add_case_update(
+    person_id: UUID,
+    payload: CaseUpdateCreate,
+    x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
+):
+    require_owner(person_id, x_owner_token)
     sb = get_supabase()
     row = {
         "person_id": str(person_id),
@@ -419,7 +446,12 @@ def list_updates(person_id: UUID):
 
 
 @router.post("/persons/{person_id}/coordinators")
-def invite_coordinator(person_id: UUID, payload: CoordinatorInvite):
+def invite_coordinator(
+    person_id: UUID,
+    payload: CoordinatorInvite,
+    x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
+):
+    require_owner(person_id, x_owner_token)
     # Cap at 4 coordinators + implicit owner
     sb = get_supabase()
     existing = sb.table("case_coordinators").select("id").eq("person_id", str(person_id)).execute().data or []
@@ -457,7 +489,12 @@ def list_coordinators(person_id: UUID):
 
 
 @router.post("/persons/{person_id}/found")
-def mark_found(person_id: UUID, payload: FoundPayload):
+def mark_found(
+    person_id: UUID,
+    payload: FoundPayload,
+    x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
+):
+    require_owner(person_id, x_owner_token)
     sb = get_supabase()
     update = {
         "status": "found",
@@ -481,17 +518,28 @@ def mark_found(person_id: UUID, payload: FoundPayload):
                 kind="found_thanks",
                 meta={"person_id": str(person_id)},
             )
-    return {"person": res.data[0], "thank_you_emails_logged": len(thanked)}
+    return {
+        "person": _row_to_person(res.data[0], public=True),
+        "thank_you_emails_logged": len(thanked),
+    }
 
 
 @router.post("/persons/{person_id}/verify-police")
-def verify_police(person_id: UUID, payload: VerifyPayload):
+def verify_police(
+    person_id: UUID,
+    payload: VerifyPayload,
+    x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
+):
+    require_owner(person_id, x_owner_token)
+    number = (payload.police_report_number or "").strip()
+    if not number:
+        raise HTTPException(400, "Police report number is required to verify")
     sb = get_supabase()
     res = (
         sb.table("persons")
         .update(
             {
-                "police_report_number": payload.police_report_number,
+                "police_report_number": number,
                 "verified_police_report": True,
                 "last_verified_at": utcnow().isoformat(),
             }
@@ -501,12 +549,16 @@ def verify_police(person_id: UUID, payload: VerifyPayload):
     )
     if not res.data:
         raise HTTPException(404, "Person not found")
-    return {"person": res.data[0], "badge": "Verified Case"}
+    return {"person": _row_to_person(res.data[0], public=True), "badge": "Verified Case"}
 
 
 @router.post("/persons/{person_id}/renew")
-def renew_case(person_id: UUID):
+def renew_case(
+    person_id: UUID,
+    x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
+):
     """90-day family confirmation."""
+    require_owner(person_id, x_owner_token)
     sb = get_supabase()
     res = (
         sb.table("persons")
@@ -581,7 +633,12 @@ def memory_forget(participant_key: str = Query(..., min_length=3)):
 # -------------------- ElevenLabs --------------------
 
 @router.post("/persons/{person_id}/audio")
-def case_audio(person_id: UUID, payload: AudioRequest):
+def case_audio(
+    person_id: UUID,
+    payload: AudioRequest,
+    x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
+):
+    require_owner(person_id, x_owner_token)
     sb = get_supabase()
     p = sb.table("persons").select("*").eq("id", str(person_id)).limit(1).execute().data
     if not p:

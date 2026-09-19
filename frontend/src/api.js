@@ -5,14 +5,31 @@
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
 
+export function getOwnerToken(personId) {
+  if (!personId) return ''
+  try {
+    return localStorage.getItem(`fmp-owner:${personId}`) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function saveOwnerToken(personId, token) {
+  if (!personId || !token) return
+  try {
+    localStorage.setItem(`fmp-owner:${personId}`, token)
+  } catch {
+    /* ignore */
+  }
+}
+
 async function request(path, options = {}) {
-  const { timeoutMs, signal: outerSignal, ...rest } = options
+  const { ownerPersonId, timeoutMs, signal: outerSignal, headers: extraHeaders, ...rest } = options
   const ctrl = timeoutMs ? new AbortController() : null
   const timer = timeoutMs
     ? setTimeout(() => ctrl.abort(), timeoutMs)
     : null
 
-  // Combine caller signal + timeout signal
   let signal = outerSignal
   if (ctrl && outerSignal) {
     outerSignal.addEventListener('abort', () => ctrl.abort(), { once: true })
@@ -21,13 +38,18 @@ async function request(path, options = {}) {
     signal = ctrl.signal
   }
 
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(extraHeaders || {}),
+  }
+  const fromPath = path.match(/\/persons\/([0-9a-f-]{36})/i)
+  const tok = getOwnerToken(ownerPersonId || fromPath?.[1])
+  if (tok) headers['X-Owner-Token'] = tok
+
   try {
     const res = await fetch(`${API_BASE}${path}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(rest.headers || {}),
-      },
       ...rest,
+      headers,
       signal,
     })
 
@@ -70,11 +92,15 @@ export function getPerson(id) {
 }
 
 /** Create a missing-person profile */
-export function createPerson(payload) {
-  return request('/persons', {
+export async function createPerson(payload) {
+  const created = await request('/persons', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+  if (created?.id && created?.owner_token) {
+    saveOwnerToken(created.id, created.owner_token)
+  }
+  return created
 }
 
 /** List sightings for a person */

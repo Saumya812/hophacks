@@ -1,12 +1,21 @@
 /**
  * API helpers for advanced features.
  */
-import { API_BASE } from './api.js'
+import { API_BASE, getOwnerToken } from './api.js'
 
 async function request(path, options = {}) {
+  const { ownerPersonId, ...rest } = options
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(rest.headers || {}),
+  }
+  const fromPath = path.match(/\/persons\/([0-9a-f-]{36})/i)
+  const tok = getOwnerToken(ownerPersonId || fromPath?.[1])
+  if (tok) headers['X-Owner-Token'] = tok
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
+    ...rest,
+    headers,
   })
   const text = await res.text()
   let body = null

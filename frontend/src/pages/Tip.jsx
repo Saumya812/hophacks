@@ -211,8 +211,8 @@ export default function Tip() {
               onChange={(e) => update('submitter_email', e.target.value)}
             />
             <p className="helper-text">
-              Tips can be submitted anonymously. Email is only used if investigators need to follow
-              up.
+              Optional. Stored for investigator follow-up only — not shown on the public case
+              timeline.
             </p>
           </div>
 

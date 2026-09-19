@@ -43,6 +43,7 @@ export default function CaseToolsPanel({ person, onPersonChange }) {
     setMsg('')
     try {
       const r = await fn()
+      if (r && r.skipped) return r
       setMsg(okMsg || 'Done')
       await reload()
       return r
@@ -215,9 +216,16 @@ export default function CaseToolsPanel({ person, onPersonChange }) {
               className="btn-primary"
               onClick={() =>
                 run(async () => {
+                  if (
+                    !window.confirm(
+                      'Mark this case as found safe? This updates the public profile.',
+                    )
+                  ) {
+                    return { skipped: true }
+                  }
                   const r = await markFound(person.id, { message: 'Found safe' })
                   onPersonChange?.(r.person)
-                }, 'Marked found — thank-you emails logged')
+                }, 'Marked found — thank-you notices logged (not emailed unless SMTP is set)')
               }
             >
               Mark found safe

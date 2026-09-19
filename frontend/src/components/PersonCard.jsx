@@ -26,10 +26,16 @@ export default function PersonCard({ person, index = 0 }) {
             {(person.name || '?').charAt(0)}
           </div>
         )}
-        <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success shadow-sm">
-          <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-success" />
-          Active
-        </span>
+        {(person.status || 'active').toLowerCase() === 'active' ? (
+          <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success shadow-sm">
+            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-success" />
+            Active
+          </span>
+        ) : (person.status || '').toLowerCase() === 'found' ? (
+          <span className="absolute left-1.5 top-1.5 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800 shadow-sm">
+            Found
+          </span>
+        ) : null}
       </div>
 
       <div className="relative min-w-0 flex-1">

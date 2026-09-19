@@ -226,6 +226,9 @@ def match_probe_against_active_cases(
         .execute()
     )
     rows = [r for r in (result.data or []) if r.get("photo_url")]
+    # Gemini Vision is one API call per photo — cap to protect shared quota
+    if avail.get("gemini_vision") and not avail.get("aws_rekognition") and not avail.get("deepface"):
+        rows = rows[:8]
 
     matches: List[Dict[str, Any]] = []
     engine_used = None
@@ -241,13 +244,16 @@ def match_probe_against_active_cases(
             errors += 1
             continue
         if score >= min_similarity:
+            photo = row.get("photo_url")
+            if isinstance(photo, str) and photo.startswith("data:"):
+                photo = None
             matches.append(
                 {
                     "person_id": row["id"],
                     "name": row.get("name"),
                     "age": row.get("age"),
                     "last_seen_location": row.get("last_seen_location"),
-                    "photo_url": row.get("photo_url"),
+                    "photo_url": photo,
                     "similarity": round(score, 1),
                     "status": row.get("status"),
                 }
