@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global base styles — navy / white FindMyPal theme */
+:root {
+  color-scheme: light;
+  --navy: #1a2b4a;
+  --navy-deep: #121e33;
+  --paper: #f4f6f9;
+  --accent-line: #2f4568;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+  color: var(--navy);
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(ellipse 90% 55% at 0% -5%, rgba(26, 43, 74, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 45% at 100% 5%, rgba(77, 103, 134, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg, #ffffff 0%, var(--paper) 42%, #eef1f5 100%);
+  background-attachment: fixed;
+}
+
+/* Soft diagonal hatch for depth (very low contrast) */
+body::before {
+  content: '';
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  opacity: 0.035;
+  background-image: repeating-linear-gradient(
+    -18deg,
+    #1a2b4a 0,
+    #1a2b4a 1px,
+    transparent 1px,
+    transparent 14px
+  );
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* Leaflet needs an explicit height on its container */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  font-family: inherit;
+  z-index: 0;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-sm bg-navy px-5 py-2.5
+      text-sm font-semibold tracking-wide text-white transition-colors duration-150
+      hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-sm border border-navy/25
+      bg-white/90 px-5 py-2.5 text-sm font-semibold tracking-wide text-navy
+      transition-colors duration-150 hover:border-navy hover:bg-white
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .input-field {
+    @apply w-full rounded-sm border border-navy/15 bg-white px-3.5 py-3 text-navy
+      shadow-[inset_0_1px_2px_rgba(26,43,74,0.04)]
+      placeholder:text-navy/35 focus:border-navy focus:outline-none focus:ring-2
+      focus:ring-navy/15;
+  }
+
+  .label-field {
+    @apply mb-1.5 block text-sm font-semibold tracking-wide text-navy;
+  }
+
+  .surface-panel {
+    @apply border border-navy/10 bg-white/85 backdrop-blur-[2px];
+  }
+}
