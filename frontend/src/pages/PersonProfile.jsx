@@ -1,13 +1,45 @@
 /**
  * Person profile page — details, AI summary, timeline, map, flyer PDF.
+ * Heavy panels (web intel, heatmap, tools) are isolated so they cannot
+ * block the core profile from rendering.
  */
-import { useEffect, useState } from 'react'
+import { Component, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getPerson, listSightings, getCaseSummary, refreshCaseSummary } from '../api.js'
 import SightingsMap from '../components/SightingsMap.jsx'
 import FlyerButton from '../components/FlyerButton.jsx'
 import CaseToolsPanel from '../components/CaseToolsPanel.jsx'
 import CaseWebIntelPanel from '../components/CaseWebIntelPanel.jsx'
+import MarimoHeatmapEmbed from '../components/MarimoHeatmapEmbed.jsx'
+
+class PanelErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <p className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          {this.props.fallback || 'This panel failed to load.'}{' '}
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => this.setState({ error: null })}
+          >
+            Retry
+          </button>
+        </p>
+      )
+    }
+    return this.props.children
+  }
+}
 
 export default function PersonProfile() {
   const { id } = useParams()
@@ -24,22 +56,31 @@ export default function PersonProfile() {
       setLoading(true)
       setError('')
       try {
-        const [p, s] = await Promise.all([getPerson(id), listSightings(id)])
+        // Load person first so the page can render even if tips fail
+        const p = await getPerson(id)
         if (cancelled) return
         setPerson(p)
-        setSightings(s.sightings || [])
-        // Load / generate summary in background
+        setLoading(false)
+
+        try {
+          const s = await listSightings(id)
+          if (!cancelled) setSightings(s.sightings || [])
+        } catch {
+          if (!cancelled) setSightings([])
+        }
+
         getCaseSummary(id)
           .then((sum) => {
             if (!cancelled) setSummary(sum)
           })
           .catch(() => {
-            /* summary is optional */
+            /* summary is optional — Gemini quota / network must not block profile */
           })
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load profile')
-      } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          setError(err.message || 'Failed to load profile')
+          setLoading(false)
+        }
       }
     }
     load()
@@ -91,6 +132,10 @@ export default function PersonProfile() {
 
   return (
     <div className="space-y-8">
+      {error && (
+        <p className="border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">{error}</p>
+      )}
+
       <div className="flex flex-col gap-6 sm:flex-row">
         <div className="h-56 w-full shrink-0 overflow-hidden bg-navy-100 sm:h-64 sm:w-52">
           {person.photo_url ? (
@@ -146,7 +191,6 @@ export default function PersonProfile() {
         </div>
       </div>
 
-      {/* AI Case Summarizer */}
       <section className="surface-panel p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -179,11 +223,30 @@ export default function PersonProfile() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="font-display text-2xl text-navy">Live sightings heatmap</h2>
+        <p className="text-sm text-navy/55">
+          Density map — hotter where tips cluster (weighted by credibility). Includes last-known
+          location when geocodable.
+        </p>
+        <PanelErrorBoundary fallback="Heatmap failed to render.">
+          <MarimoHeatmapEmbed
+            personId={person.id}
+            sightings={sightings}
+            lastSeenLocation={person.last_seen_location}
+            title={`Heatmap · ${person.name}`}
+          />
+        </PanelErrorBoundary>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="font-display text-2xl text-navy">Community tips map</h2>
-        <SightingsMap
-          lastSeenLocation={person.last_seen_location}
-          sightings={sightings}
-        />
+        <PanelErrorBoundary fallback="Map failed to render.">
+          <SightingsMap
+            key={`map-${person.id}`}
+            lastSeenLocation={person.last_seen_location}
+            sightings={sightings}
+          />
+        </PanelErrorBoundary>
       </section>
 
       <section className="space-y-3">
@@ -219,10 +282,13 @@ export default function PersonProfile() {
         )}
       </section>
 
-      {/* Lookup-equivalent public web crawl for this case */}
-      <CaseWebIntelPanel person={person} />
+      <PanelErrorBoundary fallback="Public web intelligence failed.">
+        <CaseWebIntelPanel person={person} autoStart={false} />
+      </PanelErrorBoundary>
 
-      <CaseToolsPanel person={person} onPersonChange={setPerson} />
+      <PanelErrorBoundary fallback="Case tools failed.">
+        <CaseToolsPanel person={person} onPersonChange={setPerson} />
+      </PanelErrorBoundary>
     </div>
   )
 }

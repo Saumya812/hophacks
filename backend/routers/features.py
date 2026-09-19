@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_supabase
@@ -25,6 +25,12 @@ from services.advanced import (
 )
 from services.backboard_memory import forget_search, recall_search, remember_search
 from services.elevenlabs_tts import CACHE_DIR, synthesize_speech
+from services.heatmap import (
+    build_folium_heatmap_html,
+    points_from_lookup_locations,
+    points_from_sighting_rows,
+)
+from services.geocode import geocode_query
 from pathlib import Path
 
 router = APIRouter(tags=["advanced"])
@@ -95,6 +101,15 @@ def live_tips(limit: int = Query(10, ge=1, le=50)):
     }
 
 
+@router.get("/geo/search")
+def geo_search(q: str = Query(..., min_length=2, max_length=500)):
+    """Backend Nominatim proxy — browsers cannot call OSM Nominatim reliably (CORS/UA)."""
+    hit = geocode_query(q)
+    if not hit:
+        return {"found": False, "query": q}
+    return {"found": True, "query": q, **hit}
+
+
 @router.get("/dashboard/city")
 def dashboard_city():
     return city_dashboard_stats()
@@ -103,6 +118,87 @@ def dashboard_city():
 @router.get("/analytics/case-activity/{person_id}")
 def case_activity(person_id: UUID, bucket_hours: int = Query(24, ge=1, le=168)):
     return activity_buckets(str(person_id), bucket_hours=bucket_hours)
+
+
+@router.get("/analytics/heatmap/{person_id}")
+def case_heatmap_data(person_id: UUID):
+    """
+    JSON points for the marimo / Folium density heatmap.
+    Provenance: community tips for this case (not NamUs).
+    """
+    rows = (
+        get_supabase()
+        .table("sightings")
+        .select("id,location_lat,location_lng,description,date_time,credibility_score,created_at")
+        .eq("person_id", str(person_id))
+        .execute()
+        .data
+        or []
+    )
+    points = points_from_sighting_rows(rows)
+    return {
+        "person_id": str(person_id),
+        "count": len(points),
+        "points": points,
+        "provenance": "community_tips",
+        "marimo": "notebooks/sightings_heatmap.py",
+        "embed_path": f"/analytics/heatmap/{person_id}/embed",
+    }
+
+
+@router.get("/analytics/heatmap/{person_id}/embed", response_class=HTMLResponse)
+def case_heatmap_embed(person_id: UUID):
+    """Folium HeatMap HTML for iframe embed (same viz as the marimo notebook)."""
+    person = (
+        get_supabase()
+        .table("persons")
+        .select("name")
+        .eq("id", str(person_id))
+        .limit(1)
+        .execute()
+        .data
+        or [{}]
+    )[0]
+    rows = (
+        get_supabase()
+        .table("sightings")
+        .select("id,location_lat,location_lng,description,date_time,credibility_score,created_at")
+        .eq("person_id", str(person_id))
+        .execute()
+        .data
+        or []
+    )
+    points = points_from_sighting_rows(rows)
+    name = person.get("name") or "Case"
+    html = build_folium_heatmap_html(
+        points,
+        title=f"Live sightings heatmap · {name}",
+        zoom_start=12 if points else 6,
+    )
+    return HTMLResponse(content=html)
+
+
+class HeatmapEmbedBody(BaseModel):
+    title: str = Field("Location heatmap", max_length=200)
+    points: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/analytics/heatmap/embed", response_class=HTMLResponse)
+def heatmap_embed_from_points(payload: HeatmapEmbedBody):
+    """
+    Build a Folium density heatmap from arbitrary points
+    (used by Lookup report / marimo for public-web mention locations).
+    """
+    points = points_from_lookup_locations(payload.points) if payload.points else []
+    # Allow raw lat/lng/weight payloads too
+    if not points and payload.points:
+        points = list(payload.points)
+    html = build_folium_heatmap_html(
+        points,
+        title=payload.title,
+        zoom_start=5 if len(points) > 3 else 10,
+    )
+    return HTMLResponse(content=html)
 
 
 @router.get("/analytics/cross-case-patterns")

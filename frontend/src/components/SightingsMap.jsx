@@ -1,17 +1,12 @@
 /**
- * Leaflet map: last known (red), sightings (blue), optional movement path + heat radii.
+ * Leaflet map: last known (red), tips (blue), chronological path.
+ * Uses Esri public tiles (no API key).
  */
 import { useEffect, useMemo, useState } from 'react'
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  Polyline,
-  Circle,
-  useMap,
-} from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import { geocode } from './DensityHeatMap.jsx'
+import { BASEMAP_ATTR, BASEMAP_URL } from '../mapTiles.js'
 
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
@@ -55,28 +50,6 @@ function FitBounds({ positions }) {
   return null
 }
 
-async function geocode(query) {
-  if (!query) return null
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`
-  const res = await fetch(url, { headers: { Accept: 'application/json' } })
-  if (!res.ok) return null
-  const data = await res.json()
-  if (!data?.length) return null
-  return [parseFloat(data[0].lat), parseFloat(data[0].lon)]
-}
-
-/** Count how many other tips fall within ~1.5km for heat intensity */
-function heatWeight(sightings, s) {
-  let n = 0
-  for (const o of sightings) {
-    if (o.id === s.id) continue
-    const dlat = (o.location_lat - s.location_lat) * 111
-    const dlng = (o.location_lng - s.location_lng) * 85
-    if (Math.hypot(dlat, dlng) <= 1.5) n += 1
-  }
-  return n
-}
-
 export default function SightingsMap({ lastSeenLocation, sightings, showPath = true }) {
   const [lastKnown, setLastKnown] = useState(null)
   const [geoError, setGeoError] = useState('')
@@ -86,7 +59,9 @@ export default function SightingsMap({ lastSeenLocation, sightings, showPath = t
     setGeoError('')
     geocode(lastSeenLocation)
       .then((coords) => {
-        if (!cancelled) setLastKnown(coords)
+        if (cancelled) return
+        if (coords) setLastKnown([coords.lat, coords.lng])
+        else setGeoError('Could not place last-known location on the map.')
       })
       .catch(() => {
         if (!cancelled) setGeoError('Could not place last-known location on the map.')
@@ -113,16 +88,29 @@ export default function SightingsMap({ lastSeenLocation, sightings, showPath = t
     return pts
   }, [pathPositions, lastKnown])
 
-  const center = allPositions[0] || [39.2904, -76.6122]
+  const center = allPositions[0] || [38.8691, -77.054]
+
+  if (!allPositions.length) {
+    return (
+      <div className="space-y-2">
+        <div className="flex h-72 items-center justify-center border border-navy/15 bg-navy-50 text-sm text-navy/55 sm:h-96">
+          No tip coordinates yet{geoError ? ` · ${geoError}` : ''}. Submit a tip to place markers here.
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-2">
       <div className="h-72 w-full overflow-hidden border border-navy/15 bg-navy-50 sm:h-96">
-        <MapContainer center={center} zoom={12} scrollWheelZoom className="h-full w-full">
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+        <MapContainer
+          center={center}
+          zoom={12}
+          scrollWheelZoom
+          className="h-full w-full"
+          style={{ height: '100%', width: '100%' }}
+        >
+          <TileLayer attribution={BASEMAP_ATTR} url={BASEMAP_URL} />
           <FitBounds positions={allPositions} />
 
           {lastKnown && (
@@ -134,23 +122,6 @@ export default function SightingsMap({ lastSeenLocation, sightings, showPath = t
               </Popup>
             </Marker>
           )}
-
-          {chronological.map((s) => {
-            const heat = heatWeight(chronological, s)
-            return (
-              <Circle
-                key={`heat-${s.id}`}
-                center={[s.location_lat, s.location_lng]}
-                radius={400 + heat * 350}
-                pathOptions={{
-                  color: '#1a2b4a',
-                  fillColor: '#1a2b4a',
-                  fillOpacity: Math.min(0.15 + heat * 0.12, 0.55),
-                  weight: 1,
-                }}
-              />
-            )
-          })}
 
           {showPath && pathPositions.length >= 2 && (
             <Polyline
@@ -186,7 +157,7 @@ export default function SightingsMap({ lastSeenLocation, sightings, showPath = t
         </MapContainer>
       </div>
       <p className="text-xs text-navy/55">
-        Red = last known · Blue = tips · Circles = local heat · Dotted line = chronological path
+        Red = last known · Blue = tips · Dotted line = chronological path
         {geoError ? ` · ${geoError}` : ''}
       </p>
     </div>

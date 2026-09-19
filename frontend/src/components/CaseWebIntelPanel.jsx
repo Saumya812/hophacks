@@ -16,7 +16,7 @@ const STATUS_MESSAGES = [
 
 const cacheKey = (personId) => `fmp-case-webintel:${personId}`
 
-export default function CaseWebIntelPanel({ person }) {
+export default function CaseWebIntelPanel({ person, autoStart = false }) {
   const [report, setReport] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -97,9 +97,9 @@ export default function CaseWebIntelPanel({ person }) {
     }
   }
 
-  // Auto-run once when the case opens (debounced so React Strict Mode doesn't abort mid-flight)
+  // Optional auto-run (off by default — lookup/Apify must not block profile open)
   useEffect(() => {
-    if (!person?.id) return undefined
+    if (!autoStart || !person?.id) return undefined
     let cancelled = false
     const timer = setTimeout(() => {
       if (!cancelled) runScan({ force: false })
@@ -107,11 +107,26 @@ export default function CaseWebIntelPanel({ person }) {
     return () => {
       cancelled = true
       clearTimeout(timer)
-      // Invalidate in-flight UI updates from a discarded mount (Strict Mode)
       runIdRef.current += 1
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [person?.id])
+  }, [person?.id, autoStart])
+
+  // Restore cached report without kicking off a new crawl
+  useEffect(() => {
+    if (!person?.id || autoStart) return
+    try {
+      const cached = sessionStorage.getItem(cacheKey(person.id))
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (parsed?.report_id || Array.isArray(parsed?.raw_mentions)) {
+          setReport(parsed)
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [person?.id, autoStart])
 
   return (
     <section className="space-y-4">
@@ -169,7 +184,10 @@ export default function CaseWebIntelPanel({ person }) {
       {!busy && report && <ReportCard report={report} />}
 
       {!busy && !report && !error && (
-        <p className="text-sm text-navy/55">No public-web report yet. Click Scan to start.</p>
+        <p className="text-sm text-navy/55">
+          Click <span className="font-semibold">Scan public web</span> to run the same crawl as Lookup
+          (Apify + Gemini). It is not started automatically so the profile stays fast to open.
+        </p>
       )}
     </section>
   )

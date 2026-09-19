@@ -27,53 +27,76 @@ def generate_case_summary(person_id: str) -> Dict[str, Any]:
     """
     Build a one-paragraph plain-English summary from person + sightings.
     Persists to persons.ai_summary when the column exists.
+    Never raises for transient Supabase/Gemini failures (profile must stay usable).
     """
-    supabase = get_supabase()
-    person_res = supabase.table("persons").select("*").eq("id", person_id).limit(1).execute()
-    if not person_res.data:
-        raise ValueError("Person not found")
-    person = person_res.data[0]
-    sight_res = (
-        supabase.table("sightings")
-        .select("*")
-        .eq("person_id", person_id)
-        .order("date_time", desc=False)
-        .execute()
-    )
-    sightings = sight_res.data or []
-
-    if not gemini_configured():
-        summary = _heuristic_summary(person, sightings)
-        engine = "heuristic"
-    else:
-        try:
-            summary = _gemini_summary(person, sightings)
-            engine = "gemini"
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Gemini summary failed: %s", exc)
-            summary = _heuristic_summary(person, sightings)
-            engine = "heuristic_fallback"
-
-    # Best-effort persist (column may not exist yet)
     try:
-        supabase.table("persons").update(
-            {
-                "ai_summary": summary,
-                "ai_summary_updated_at": datetime.utcnow().isoformat() + "Z",
+        supabase = get_supabase()
+        person_res = supabase.table("persons").select("*").eq("id", person_id).limit(1).execute()
+        if not person_res.data:
+            return {
+                "person_id": person_id,
+                "summary": "Case profile could not be loaded for summary.",
+                "engine": "error",
+                "sighting_count": 0,
+                "persisted": False,
+                "generated_at": datetime.utcnow().isoformat() + "Z",
             }
-        ).eq("id", person_id).execute()
-        persisted = True
-    except Exception:  # noqa: BLE001
-        persisted = False
+        person = person_res.data[0]
+        try:
+            sight_res = (
+                supabase.table("sightings")
+                .select("*")
+                .eq("person_id", person_id)
+                .order("date_time", desc=False)
+                .execute()
+            )
+            sightings = sight_res.data or []
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Sightings fetch for summary failed: %s", exc)
+            sightings = []
 
-    return {
-        "person_id": person_id,
-        "summary": summary,
-        "engine": engine,
-        "sighting_count": len(sightings),
-        "persisted": persisted,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-    }
+        if not gemini_configured():
+            summary = _heuristic_summary(person, sightings)
+            engine = "heuristic"
+        else:
+            try:
+                summary = _gemini_summary(person, sightings)
+                engine = "gemini"
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Gemini summary failed: %s", exc)
+                summary = _heuristic_summary(person, sightings)
+                engine = "heuristic_fallback"
+
+        # Best-effort persist (column may not exist yet)
+        try:
+            supabase.table("persons").update(
+                {
+                    "ai_summary": summary,
+                    "ai_summary_updated_at": datetime.utcnow().isoformat() + "Z",
+                }
+            ).eq("id", person_id).execute()
+            persisted = True
+        except Exception:  # noqa: BLE001
+            persisted = False
+
+        return {
+            "person_id": person_id,
+            "summary": summary,
+            "engine": engine,
+            "sighting_count": len(sightings),
+            "persisted": persisted,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("generate_case_summary failed: %s", exc)
+        return {
+            "person_id": person_id,
+            "summary": "Summary is temporarily unavailable. Try Refresh in a moment.",
+            "engine": "error",
+            "sighting_count": 0,
+            "persisted": False,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+        }
 
 
 def _heuristic_summary(person: Dict[str, Any], sightings: List[Dict[str, Any]]) -> str:

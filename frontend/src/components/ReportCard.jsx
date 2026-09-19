@@ -3,8 +3,8 @@
  * Sections: summary, timeline, heatmap, raw mentions, PDF download.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
 import { API_BASE } from '../api.js'
+import MarimoHeatmapEmbed from './MarimoHeatmapEmbed.jsx'
 
 const PLATFORM_COLORS = {
   instagram: '#C13584',
@@ -17,20 +17,6 @@ const PLATFORM_COLORS = {
   news: '#1a2b4a',
   google: '#1a2b4a',
   web: '#4d6786',
-}
-
-function FitLocations({ locations }) {
-  const map = useMap()
-  useEffect(() => {
-    if (!locations?.length) return
-    const latLngs = locations.map((l) => [l.lat, l.lng])
-    if (latLngs.length === 1) {
-      map.setView(latLngs[0], 11)
-      return
-    }
-    map.fitBounds(latLngs, { padding: [36, 36] })
-  }, [map, locations])
-  return null
 }
 
 function confidenceClass(level) {
@@ -238,53 +224,18 @@ export default function ReportCard({ report }) {
         )}
       </section>
 
-      {/* HEATMAP */}
+      {/* HEATMAP — marimo / Folium density map */}
       <section className="space-y-3">
         <div className="border-b border-navy/15 pb-2">
           <h3 className="font-display text-2xl text-navy">Location heatmap</h3>
           <p className="text-sm text-navy/55">
-            Marker size reflects how often a place was mentioned.
+            Density from geocoded public-web mentions (marimo track · Folium HeatMap).
           </p>
         </div>
-        <div className="h-72 overflow-hidden border border-navy/15 bg-navy-50 sm:h-96">
-          {locations.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-navy/50">
-              No geocoded locations available for this report.
-            </div>
-          ) : (
-            <MapContainer
-              center={[locations[0].lat, locations[0].lng]}
-              zoom={5}
-              scrollWheelZoom
-              className="h-full w-full"
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <FitLocations locations={locations} />
-              {locations.map((loc) => (
-                <CircleMarker
-                  key={`${loc.label}-${loc.lat}-${loc.lng}`}
-                  center={[loc.lat, loc.lng]}
-                  radius={Math.min(8 + (loc.count || 1) * 4, 28)}
-                  pathOptions={{
-                    color: '#1a2b4a',
-                    fillColor: '#1a2b4a',
-                    fillOpacity: 0.35,
-                    weight: 2,
-                  }}
-                >
-                  <Popup>
-                    <strong>{loc.label}</strong>
-                    <br />
-                    Mentions: {loc.count}
-                  </Popup>
-                </CircleMarker>
-              ))}
-            </MapContainer>
-          )}
-        </div>
+        <MarimoHeatmapEmbed
+          points={locations}
+          title="Lookup location heatmap"
+        />
       </section>
 
       {/* RAW MENTIONS */}
