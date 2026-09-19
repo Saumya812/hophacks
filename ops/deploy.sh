@@ -18,9 +18,7 @@ python3 -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/pip" install --quiet -r "$APP_DIR/backend/requirements.txt"
 
 install -d -o findmypal -g findmypal /var/www/findmypal
-if [[ ! -d "$APP_DIR/frontend/node_modules" ]]; then
-  (cd "$APP_DIR/frontend" && npm ci)
-fi
+(cd "$APP_DIR/frontend" && npm ci --include=dev)
 (cd "$APP_DIR/frontend" && VITE_API_BASE_URL=/api npm run build)
 rsync -a --delete "$APP_DIR/frontend/dist/" /var/www/findmypal/
 chown -R findmypal:findmypal "$APP_DIR"
