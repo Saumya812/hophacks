@@ -5,12 +5,12 @@
  */
 import { Component, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getPerson, listSightings, getCaseSummary, refreshCaseSummary } from '../api.js'
+import { getPerson, listSightings, getCaseSummary, refreshCaseSummary, API_BASE } from '../api.js'
 import SightingsMap from '../components/SightingsMap.jsx'
 import FlyerButton from '../components/FlyerButton.jsx'
 import CaseToolsPanel from '../components/CaseToolsPanel.jsx'
 import CaseWebIntelPanel from '../components/CaseWebIntelPanel.jsx'
-import MarimoHeatmapEmbed from '../components/MarimoHeatmapEmbed.jsx'
+import DensityHeatMap from '../components/DensityHeatMap.jsx'
 
 class PanelErrorBoundary extends Component {
   constructor(props) {
@@ -229,12 +229,40 @@ export default function PersonProfile() {
           location when geocodable.
         </p>
         <PanelErrorBoundary fallback="Heatmap failed to render.">
-          <MarimoHeatmapEmbed
-            personId={person.id}
-            sightings={sightings}
+          <DensityHeatMap
+            points={(sightings || []).map((s) => ({
+              lat: Number(s.location_lat),
+              lng: Number(s.location_lng),
+              weight:
+                s.credibility_score != null
+                  ? Math.max(1, Number(s.credibility_score) / 3)
+                  : 1,
+              label: s.description || 'Community tip',
+              date: s.date_time || '',
+            }))}
             lastSeenLocation={person.last_seen_location}
             title={`Heatmap · ${person.name}`}
           />
+          <p className="text-xs text-navy/45">
+            Marimo notebook data:{' '}
+            <a
+              className="underline"
+              href={`${API_BASE}/analytics/heatmap/${person.id}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              /analytics/heatmap/{person.id}
+            </a>
+            {' · '}
+            <a
+              className="underline"
+              href={`${API_BASE}/analytics/heatmap/${person.id}/embed`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Folium embed
+            </a>
+          </p>
         </PanelErrorBoundary>
       </section>
 

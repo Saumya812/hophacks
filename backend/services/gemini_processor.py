@@ -16,14 +16,10 @@ from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import httpx
-
 from services.gemini_client import gemini_configured
 from services.geocode import geocode_query
 
 logger = logging.getLogger(__name__)
-
-USER_AGENT = "FindMyPalLookup/1.0 (missing-persons research; contact: mock@findmypal.local)"
 
 # Bidirectional / formatting marks that leak into scraped locale dates (e.g. 08‏/09‏/2026)
 _BIDI_RE = re.compile(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
@@ -508,19 +504,6 @@ def extract_sightings_with_gemini(
         last_exc or "empty",
     )
     return _heuristic_extract(name, raw_mentions), "heuristic_fallback"
-
-
-async def geocode_location(client: httpx.AsyncClient, location: str) -> Optional[Dict[str, float]]:
-    """Geocode a free-text location (uses shared robust Nominatim helper)."""
-    _ = client
-    hit = await asyncio.to_thread(geocode_query, location)
-    if not hit:
-        return None
-    return {
-        "lat": float(hit["lat"]),
-        "lng": float(hit["lng"]),
-        "label": location,
-    }
 
 
 def _drop_geo_outliers(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

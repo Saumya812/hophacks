@@ -199,7 +199,7 @@ def _check_rate_limit(ip: str) -> None:
     if len(hits) >= RATE_LIMIT_MAX:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded: max 5 Smart Person searches per hour from this IP.",
+            detail="Rate limit exceeded: max 20 Smart Person searches per hour from this IP.",
         )
     hits.append(now)
 

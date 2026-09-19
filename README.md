@@ -1,8 +1,8 @@
 # FindMyPal
 
-Missing-persons platform: report cases, submit sightings, search with natural language, view tips on a map, and run **Smart Person Search** across public web sources.
+Missing-persons platform: publish cases, collect tips, search with natural language, map sightings, and run **Smart Person Search** across public web sources.
 
-**Tech stack:** React + Tailwind · FastAPI · Supabase (PostgreSQL) · Leaflet · Google Gemini · SpacetimeDB (planned) · DigitalOcean
+**Stack:** React + Vite + Tailwind · FastAPI · Supabase (PostgreSQL) · Leaflet · Google Gemini · Apify (optional) · marimo notebooks
 
 ---
 
@@ -10,116 +10,121 @@ Missing-persons platform: report cases, submit sightings, search with natural la
 
 ```
 hophacks/
+├── README.md
 ├── db/
-│   └── schema.sql
+│   ├── schema.sql                 # Core tables
+│   └── migrations/                # Intelligence + advanced features
+├── notebooks/
+│   ├── sightings_heatmap.py       # marimo density heatmap
+│   └── case_activity.py           # marimo activity charts
+├── docs/                          # Sponsor / build notes
 ├── backend/
 │   ├── main.py
-│   ├── config.py
-│   ├── database.py
-│   ├── schemas.py
-│   ├── requirements.txt
-│   ├── .env.example
-│   ├── routers/
-│   │   ├── persons.py
-│   │   ├── sightings.py
-│   │   ├── search.py
-│   │   └── lookup_router.py      # Smart Person Search API
-│   └── services/
-│       ├── gemini.py             # NL case search filters
-│       ├── scraper_service.py    # Parallel public-source scrapers
-│       ├── apify_crawlers.py     # Apify: Reddit / Instagram / Facebook
-│       ├── gemini_processor.py   # Sighting extraction + geocode
-│       └── lookup_pdf.py         # Lookup report PDF
+│   ├── config.py · database.py · schemas.py
+│   ├── requirements.txt · .env.example
+│   ├── routers/                   # persons, sightings, search, lookup, intelligence, features
+│   └── services/                  # scrapers, Gemini, maps, alerts, face match, TTS, …
 └── frontend/
     ├── src/
-    │   ├── App.jsx
-    │   ├── api.js
-    │   ├── components/           # + ReportCard.jsx
-    │   └── pages/                # + Lookup.jsx (/lookup)
+    │   ├── App.jsx · api.js · advancedApi.js · mapTiles.js
+    │   ├── components/            # maps, lookup report, case tools, live feed, …
+    │   └── pages/                 # Home, Lookup, Report, Tip, Profile, Dashboard
     └── package.json
 ```
 
 ---
 
-## Status
+## Features
 
-| Component | Status |
-|-----------|--------|
-| Database schema (`db/schema.sql`) | Done |
-| FastAPI backend (persons / sightings / NL search) | Done |
-| React frontend (cases, report, tip, profile) | Done |
-| Leaflet map + flyer PDF | Done |
-| **Smart Person Search (`/lookup`)** | Done |
-| SpacetimeDB realtime | Later |
-| DigitalOcean deploy | Later |
-
-**Out of scope (v1):** auth, admin dashboard, payments, face recognition, permanent search history DB.
+| Area | What you get |
+|------|----------------|
+| Cases | Create / list profiles, tip submission, flyer PDF |
+| Maps | Leaflet tip path map + density heatmap (Esri basemap) |
+| Search | Gemini natural-language case filters |
+| Lookup | Public-web scrape → Gemini extract → geocode → PDF brief |
+| Intelligence | Case summary, credibility scoring, face-match assist |
+| Advanced | Live tips, city dashboard, alerts, coordinators, social kit, TTS |
 
 ---
 
-## 1. Database setup (Supabase)
+## 1. Database (Supabase)
 
-1. Create a Supabase project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** → paste and run [`db/schema.sql`](db/schema.sql).
-3. Tables: `users`, `persons`, `sightings`.
-4. Seed mock user: `mock@findmypal.local` / `00000000-0000-0000-0000-000000000001`.
+1. Create a project at [supabase.com](https://supabase.com).
+2. Run [`db/schema.sql`](db/schema.sql) in the SQL Editor.
+3. Apply migrations in order:
+   - [`db/migrations/002_intelligence.sql`](db/migrations/002_intelligence.sql)
+   - [`db/migrations/003_advanced_features.sql`](db/migrations/003_advanced_features.sql)
+4. Seed mock user is included: `mock@findmypal.local` / `00000000-0000-0000-0000-000000000001`.
 
-Copy from **Project Settings → API**:
-- **Project URL** → `SUPABASE_URL` (`https://<ref>.supabase.co`)
+From **Project Settings → API**:
+- Project URL → `SUPABASE_URL`
 - **service_role** key → `SUPABASE_KEY`
 
 ---
 
-## 2. Backend setup
+## 2. Backend
 
 ```bash
 cd backend
 python -m venv .venv
 .venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS / Linux
 pip install -r requirements.txt
-copy .env.example .env
+copy .env.example .env          # or: cp .env.example .env
 ```
 
-Fill `backend/.env` (Supabase + Gemini recommended). Optional lookup keys:
+Fill `backend/.env` (see `.env.example`). Important keys:
 
-```
-SERPAPI_KEY=
-NEWSAPI_KEY=
-YOUTUBE_API_KEY=
-RAPIDAPI_KEY=
-TWITTER_RAPIDAPI_HOST=twitter-api45.p.rapidapi.com
-```
+| Key | Purpose |
+|-----|---------|
+| `SUPABASE_URL` / `SUPABASE_KEY` | Database |
+| `GEMINI_API_KEY` | NL search + Lookup extraction (+ optional `GEMINI_MODEL`) |
+| `SERPAPI_KEY` | Google + YouTube search (Lookup) |
+| `NEWSAPI_KEY` | News mentions |
+| `APIFY_TOKEN` | Reddit / Instagram / Facebook crawlers |
+| `YOUTUBE_API_KEY` | Optional; SerpAPI YouTube engine is used if unset |
+| `RAPIDAPI_KEY` | Optional X/Twitter |
 
 ```bash
 uvicorn main:app --reload --port 8000
 ```
 
-### Core API routes
+Docs: http://127.0.0.1:8000/docs
+
+### Core routes
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/persons` | Create missing-person profile |
-| `GET` | `/persons` | List / filter profiles |
-| `GET` | `/persons/{id}` | Single profile |
+| `POST` | `/persons` | Create case |
+| `GET` | `/persons` | List / filter |
+| `GET` | `/persons/{id}` | Case detail |
 | `POST` | `/persons/{id}/sightings` | Submit tip |
 | `GET` | `/persons/{id}/sightings` | List tips |
-| `POST` | `/search/natural` | Gemini NL case search |
+| `POST` | `/search/natural` | Gemini NL search |
 
-### Smart Person Search routes
+### Smart Person Search
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/lookup/search` | Name + photo → structured report |
-| `GET` | `/lookup/report/{id}` | Cached report JSON (1 hour) |
-| `GET` | `/lookup/report/{id}/pdf` | Download PDF brief |
+| `POST` | `/lookup/search` | Name + photo → report |
+| `GET` | `/lookup/report/{id}` | Cached JSON (1 hour) |
+| `GET` | `/lookup/report/{id}/pdf` | PDF brief |
 
-**Pipeline:** parallel scrapers (SerpAPI/DuckDuckGo, NewsAPI, X, YouTube) + **Apify crawlers** (Reddit posts/comments, Instagram posts/comments, Facebook public posts) when `APIFY_TOKEN` is set → Gemini extraction → Nominatim geocode → report. Rate limit: **5 searches / IP / hour**. Photos stay in memory only (never written to disk).
+**Pipeline:** SerpAPI / News / X / YouTube / Reddit (+ Apify when configured) → Gemini extraction (with strict heuristic fallback) → geocode → heatmap points. Rate limit: **20 searches / IP / hour**. Photos stay in memory only.
 
-**Apify setup:** create a token at [Apify Console → Integrations](https://console.apify.com/settings/integrations), set `APIFY_TOKEN` in `backend/.env`, restart uvicorn. Default actors: `scrapeforge/reddit-scraper`, `apify/instagram-scraper`, `scraper_one/facebook-posts-search`.
+**Apify:** [Console → Integrations](https://console.apify.com/settings/integrations) → set `APIFY_TOKEN`. Defaults: `scrapeforge/reddit-scraper`, `apify/instagram-scraper`, `scraper_one/facebook-posts-search`.
+
+### Maps / analytics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/geo/search?q=` | Backend geocode proxy |
+| `GET` | `/analytics/heatmap/{id}` | Tip points JSON (marimo) |
+| `GET` | `/analytics/heatmap/{id}/embed` | Folium HTML embed |
 
 ---
 
-## 3. Frontend setup
+## 3. Frontend
 
 ```bash
 cd frontend
@@ -132,17 +137,41 @@ Open http://localhost:5173
 
 | Path | Purpose |
 |------|---------|
-| `/` | Homepage — search + active cases |
-| `/person/:id` | Profile — timeline, map, flyer PDF |
-| `/report` | Create missing-person form |
-| `/tip/:id` | Public tip submission |
-| `/lookup` | **Smart Person Search** (input → loading → report) |
+| `/` | Home — search, active cases, live tips |
+| `/lookup` | Smart Person Search |
+| `/person/:id` | Profile — heatmap, tip map, tools, web intel |
+| `/report` | Create a case |
+| `/tip/:id` | Submit a tip |
+| `/dashboard` | City / cross-case dashboard |
+
+Set `VITE_API_BASE=http://127.0.0.1:8000` in `frontend/.env` if needed.
 
 ---
 
-## Design notes
+## 4. marimo notebooks (optional)
 
-- Color scheme: navy `#1a2b4a` and white
-- Fonts: Fraunces (display) + Source Sans 3 (body)
-- Mock user only (no auth)
-- Lookup report styled as a clean intelligence brief
+```bash
+cd backend
+.venv\Scripts\activate
+pip install marimo folium   # if not already in requirements
+marimo edit ../notebooks/sightings_heatmap.py
+```
+
+Notebooks call the FastAPI heatmap / activity endpoints above.
+
+---
+
+## Design
+
+- Navy `#1a2b4a` + white
+- Fraunces (display) + Source Sans 3 (body)
+- Mock user only (no production auth)
+- Lookup report styled as an intelligence brief
+
+---
+
+## Notes
+
+- Do **not** commit `backend/.venv`, `__pycache__`, or `.env` files (see `.gitignore`).
+- Gemini free-tier quotas can force Lookup onto a strict heuristic fallback; set a working `GEMINI_API_KEY` / model for best extract quality.
+- Map tiles use Esri World Street Map (no Carto/OSM.org tile key required).

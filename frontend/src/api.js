@@ -107,11 +107,6 @@ export function lookupSearch(payload, { timeoutMs = 150_000 } = {}) {
   })
 }
 
-/** Fetch a cached lookup report by id */
-export function getLookupReport(reportId) {
-  return request(`/lookup/report/${reportId}`)
-}
-
 /** Face match against active case photos */
 export function matchFace(payload) {
   return request('/faces/match', {

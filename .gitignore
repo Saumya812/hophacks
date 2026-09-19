@@ -1,7 +1,20 @@
 # Secrets & local env
 .env
 backend/.env
+frontend/.env
+frontend/.env.local
 *.pem
+
+# Python
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+backend/.venv/
+.venv/
+venv/
 
 # Audio cache (ElevenLabs demo)
 backend/.audio_cache/
@@ -9,11 +22,10 @@ backend/.audio_cache/
 # Node / frontend
 frontend/node_modules/
 frontend/dist/
-frontend/.env
-frontend/.env.local
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+*.log
