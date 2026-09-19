@@ -4,7 +4,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { API_BASE } from '../api.js'
-import MarimoHeatmapEmbed from './MarimoHeatmapEmbed.jsx'
+import LookupLocationHeatmap from './LookupLocationHeatmap.jsx'
 
 const PLATFORM_COLORS = {
   instagram: '#C13584',
@@ -24,6 +24,49 @@ function confidenceClass(level) {
   if (c === 'high') return 'border-l-emerald-600 bg-emerald-50/80'
   if (c === 'medium') return 'border-l-amber-500 bg-amber-50/70'
   return 'border-l-amber-300 bg-amber-50/40'
+}
+
+/** Strip bidi marks and normalize mixed date formats for display. */
+function formatReportDate(raw) {
+  if (!raw) return '—'
+  const cleaned = String(raw).replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim()
+  if (!cleaned) return '—'
+
+  const months = {
+    jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+    may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, sep: 8, september: 8,
+    oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
+  }
+
+  let d = null
+  const iso = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+
+  if (!d || Number.isNaN(d.getTime())) {
+    const named = cleaned.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/)
+    if (named && months[named[1].toLowerCase()] != null) {
+      d = new Date(Number(named[3]), months[named[1].toLowerCase()], Number(named[2]))
+    }
+  }
+
+  if (!d || Number.isNaN(d.getTime())) {
+    const slash = cleaned.match(/^(\d{1,4})[./-](\d{1,2})[./-](\d{1,4})$/)
+    if (slash) {
+      let a = Number(slash[1])
+      let b = Number(slash[2])
+      let c = Number(slash[3])
+      if (a >= 1900) d = new Date(a, b - 1, c)
+      else {
+        const year = c < 100 ? 2000 + c : c
+        // Prefer MDY (US); if month invalid try DMY
+        if (a >= 1 && a <= 12) d = new Date(year, a - 1, b)
+        else d = new Date(year, b - 1, a)
+      }
+    }
+  }
+
+  if (!d || Number.isNaN(d.getTime())) return cleaned
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function PlatformBadge({ source }) {
@@ -90,8 +133,9 @@ export default function ReportCard({ report }) {
     )
   }
 
-  const dateStart = summary.date_range?.start || '—'
-  const dateEnd = summary.date_range?.end || '—'
+  const dateStart = formatReportDate(summary.date_range?.start)
+  const dateEnd = formatReportDate(summary.date_range?.end)
+  const engine = report?.extraction_engine
 
   return (
     <div className="space-y-8">
@@ -143,7 +187,9 @@ export default function ReportCard({ report }) {
                 Date range
               </dt>
               <dd className="mt-1 text-navy/80">
-                {dateStart} → {dateEnd}
+                {dateStart === '—' && dateEnd === '—'
+                  ? 'Not determined'
+                  : `${dateStart} → ${dateEnd}`}
               </dd>
             </div>
             <div>
@@ -156,6 +202,15 @@ export default function ReportCard({ report }) {
             </div>
           </dl>
         </div>
+        {engine && engine !== 'gemini' ? (
+          <div className="border-t border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-950">
+            Extractor: <strong>{engine}</strong>
+            {engine === 'heuristic_fallback'
+              ? ' — Gemini quota hit; using strict name-match fallback. Results may be fewer until API quota resets.'
+              : ' — rule-based extract (Gemini not configured).'}
+            {report?.raw_count != null ? ` · ${report.raw_count} raw indexed hits` : ''}
+          </div>
+        ) : null}
         {Object.keys(sourcesStatus).length > 0 && (
           <div className="border-t border-navy/10 px-5 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-navy/45">
@@ -197,7 +252,8 @@ export default function ReportCard({ report }) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <PlatformBadge source={s.source} />
                   <span className="text-xs font-semibold uppercase tracking-wide text-navy/50">
-                    {(s.confidence || 'low').toUpperCase()} · {s.date || 'Undated'}
+                    {(s.confidence || 'low').toUpperCase()} ·{' '}
+                    {formatReportDate(s.date) === '—' ? 'Undated' : formatReportDate(s.date)}
                   </span>
                 </div>
                 {s.location && (
@@ -224,19 +280,11 @@ export default function ReportCard({ report }) {
         )}
       </section>
 
-      {/* HEATMAP — marimo / Folium density map */}
-      <section className="space-y-3">
-        <div className="border-b border-navy/15 pb-2">
-          <h3 className="font-display text-2xl text-navy">Location heatmap</h3>
-          <p className="text-sm text-navy/55">
-            Density from geocoded public-web mentions (marimo track · Folium HeatMap).
-          </p>
-        </div>
-        <MarimoHeatmapEmbed
-          points={locations}
-          title="Lookup location heatmap"
-        />
-      </section>
+      <LookupLocationHeatmap
+        locations={locations}
+        sightings={sightings}
+        rawMentions={rawMentions}
+      />
 
       {/* RAW MENTIONS */}
       <section className="surface-panel">

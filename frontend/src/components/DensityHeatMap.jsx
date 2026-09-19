@@ -38,15 +38,21 @@ function FitPoints({ points, fallback }) {
     const pts = (points || [])
       .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
       .map((p) => [p.lat, p.lng])
-    if (pts.length === 0) {
-      if (fallback) map.setView(fallback, 12)
-      return
+    const apply = () => {
+      if (pts.length === 0) {
+        if (fallback) map.setView(fallback, 12)
+        return
+      }
+      if (pts.length === 1) {
+        map.setView(pts[0], 13)
+      } else {
+        map.fitBounds(pts, { padding: [40, 40] })
+      }
+      // Leaflet often paints blank until size is recalculated after mount
+      setTimeout(() => map.invalidateSize(), 50)
+      setTimeout(() => map.invalidateSize(), 250)
     }
-    if (pts.length === 1) {
-      map.setView(pts[0], 13)
-      return
-    }
-    map.fitBounds(pts, { padding: [40, 40] })
+    apply()
   }, [map, points, fallback])
   return null
 }

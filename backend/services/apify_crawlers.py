@@ -134,11 +134,11 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
         client,
         actor,
         {
-            "searchTerms": [name],
-            "maxItems": 8,
+            "searchTerms": [name, f"{name} missing"],
+            "maxItems": 15,
             "scrapeComments": True,
-            "maxComments": 5,
-            "commentDepth": 1,
+            "maxComments": 12,
+            "commentDepth": 2,
             "sort": "relevance",
             "timeFilter": "all",
             "maximizeCoverage": False,
@@ -228,8 +228,8 @@ async def crawl_instagram(client: httpx.AsyncClient, full_name: str) -> List[Dic
             "search": name,
             "searchType": "user",
             "resultsType": "posts",
-            "resultsLimit": 8,
-            "searchLimit": 3,
+            "resultsLimit": 12,
+            "searchLimit": 5,
         },
         timeout_secs=55,
     )
@@ -295,7 +295,7 @@ async def crawl_facebook(client: httpx.AsyncClient, full_name: str) -> List[Dict
         actor,
         {
             "query": name,
-            "resultsCount": 8,
+            "resultsCount": 15,
             "searchType": "top",
         },
         timeout_secs=55,
@@ -383,9 +383,9 @@ async def collect_apify_mentions(full_name: str) -> Dict[str, Any]:
         return {"raw_mentions": raw, "sources_status": status}
 
     try:
-        return await asyncio.wait_for(_run_all(), timeout=75.0)
+        return await asyncio.wait_for(_run_all(), timeout=120.0)
     except asyncio.TimeoutError:
-        logger.warning("Apify collect timed out after 75s for %r", full_name)
+        logger.warning("Apify collect timed out after 120s for %r", full_name)
         return {
             "raw_mentions": [],
             "sources_status": {

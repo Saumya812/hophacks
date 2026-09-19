@@ -32,8 +32,119 @@ from services.gemini_processor import (
 )
 from services.lookup_pdf import build_lookup_pdf
 from services.scraper_service import collect_raw_mentions
+from database import get_supabase
 
 router = APIRouter(prefix="/lookup", tags=["lookup"])
+
+
+def _locations_from_matching_case(full_name: str) -> list[dict]:
+    """
+    When Lookup finds no geocodable public-web places, reuse tip coordinates
+    from an active case with the same name (same data Cases heatmap uses).
+    """
+    name = " ".join((full_name or "").split())
+    if len(name) < 2:
+        return []
+    try:
+        sb = get_supabase()
+        parts = name.split()
+        persons: list[dict] = []
+
+        # Exact (case-insensitive)
+        persons = (
+            sb.table("persons")
+            .select("id,name,last_seen_location")
+            .ilike("name", name)
+            .limit(5)
+            .execute()
+            .data
+            or []
+        )
+
+        # First + last token
+        if not persons and len(parts) >= 2:
+            persons = (
+                sb.table("persons")
+                .select("id,name,last_seen_location")
+                .ilike("name", f"%{parts[0]}%{parts[-1]}%")
+                .limit(5)
+                .execute()
+                .data
+                or []
+            )
+
+        # First name only when unique among active cases (demo-friendly)
+        if not persons and parts:
+            candidates = (
+                sb.table("persons")
+                .select("id,name,last_seen_location,status")
+                .ilike("name", f"{parts[0]}%")
+                .limit(10)
+                .execute()
+                .data
+                or []
+            )
+            active = [p for p in candidates if (p.get("status") or "active") == "active"]
+            pool = active or candidates
+            if len(pool) == 1:
+                persons = pool
+            elif pool:
+                # Prefer name that shares the most tokens
+                want = {t.lower() for t in parts}
+                scored = sorted(
+                    pool,
+                    key=lambda p: len(want & set((p.get("name") or "").lower().split())),
+                    reverse=True,
+                )
+                if scored and len(want & set((scored[0].get("name") or "").lower().split())) >= 1:
+                    persons = [scored[0]]
+
+        if not persons:
+            return []
+
+        person = persons[0]
+        rows = (
+            sb.table("sightings")
+            .select("location_lat,location_lng,description")
+            .eq("person_id", person["id"])
+            .execute()
+            .data
+            or []
+        )
+        out: list[dict] = []
+        for r in rows:
+            try:
+                lat = float(r["location_lat"])
+                lng = float(r["location_lng"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            out.append(
+                {
+                    "lat": lat,
+                    "lng": lng,
+                    "label": (r.get("description") or "Case tip")[:80],
+                    "count": 1,
+                }
+            )
+        if not out and person.get("last_seen_location"):
+            from services.geocode import geocode_query
+
+            hit = geocode_query(person["last_seen_location"])
+            if hit:
+                out.append(
+                    {
+                        "lat": float(hit["lat"]),
+                        "lng": float(hit["lng"]),
+                        "label": person["last_seen_location"],
+                        "count": 1,
+                    }
+                )
+        return out
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).warning("Case tip fallback failed: %s", exc)
+        return []
 
 # ---------------------------------------------------------------------------
 # In-memory cache + rate limiter (process-local; fine for single-instance demos)
@@ -53,6 +164,14 @@ _rate_hits: Dict[str, Deque[float]] = defaultdict(deque)
 
 def _normalize_name(name: str) -> str:
     return re.sub(r"\s+", " ", (name or "").strip().lower())
+
+
+# Bump when heatmap/geocode/extractor logic changes so stale in-memory reports are rebuilt
+_CACHE_VERSION = 4
+
+
+def _cache_key(name: str) -> str:
+    return f"v{_CACHE_VERSION}:{_normalize_name(name)}"
 
 
 def _purge_expired() -> None:
@@ -129,13 +248,34 @@ async def _build_report(full_name: str, photo_data_url: Optional[str]) -> Dict[s
     raw_mentions = scraped.get("raw_mentions") or []
 
     # Gemini call is sync (google-generativeai) — run in a thread
-    sightings = await asyncio.to_thread(
+    sightings, extraction_engine = await asyncio.to_thread(
         extract_sightings_with_gemini,
         full_name,
         raw_mentions,
     )
     sightings = sort_sightings_chronologically(sightings)
-    locations = await geocode_mentions(sightings)
+    locations = await geocode_mentions(sightings, raw_mentions)
+
+    # Always merge matching case tip coords so Lookup heatmap aligns with Cases
+    case_pts = await asyncio.to_thread(_locations_from_matching_case, full_name)
+    if case_pts:
+        # Deduplicate by rounded lat/lng
+        seen = {
+            (round(float(p["lat"]), 4), round(float(p["lng"]), 4))
+            for p in locations
+        }
+        for p in case_pts:
+            key = (round(float(p["lat"]), 4), round(float(p["lng"]), 4))
+            if key in seen:
+                continue
+            seen.add(key)
+            locations.append(p)
+
+    # Drop bad geocodes that would force a world-zoom map
+    from services.gemini_processor import _drop_geo_outliers
+
+    locations = _drop_geo_outliers(locations)
+
     summary = build_summary(full_name, photo_data_url, sightings, locations)
 
     report_id = str(uuid.uuid4())
@@ -144,6 +284,8 @@ async def _build_report(full_name: str, photo_data_url: Optional[str]) -> Dict[s
         "summary": summary,
         "sightings": sightings,
         "locations": locations,
+        "extraction_engine": extraction_engine,
+        "raw_count": scraped.get("raw_count") or len(raw_mentions),
         "raw_mentions": [
             {
                 "source": m.get("source"),
@@ -169,12 +311,19 @@ async def lookup_search(payload: LookupSearchRequest, request: Request) -> Dict[
     _purge_expired()
 
     full_name = _resolve_name(payload)
-    name_key = _normalize_name(full_name)
+    name_key = _cache_key(full_name)
     photo_data_url = _normalize_photo(payload.photo)
 
     # Cache hit by name — reuse without burning rate limit
+    # Cache hit — only reuse Gemini-quality extracts (not heuristic fallback)
     cached = _name_cache.get(name_key)
-    if cached and cached[0] > time.time() and (cached[1].get("sightings") or []):
+    if (
+        cached
+        and cached[0] > time.time()
+        and (cached[1].get("sightings") or [])
+        and (cached[1].get("locations") or [])
+        and cached[1].get("extraction_engine") == "gemini"
+    ):
         report = dict(cached[1])
         if photo_data_url and report.get("summary"):
             report = {
@@ -185,17 +334,24 @@ async def lookup_search(payload: LookupSearchRequest, request: Request) -> Dict[
         report["cached"] = True
         return report
 
+    # Drop stale / non-Gemini cache so accuracy fixes apply on next search
+    if cached and cached[1].get("extraction_engine") != "gemini":
+        _name_cache.pop(name_key, None)
+
     ip = _client_ip(request)
     _check_rate_limit(ip)
 
     report = await _build_report(full_name, photo_data_url)
     report["cached"] = False
 
-    # Do not cache empty/sparse reports — lets improved extractors retry
-    if report.get("empty") or (
-        not (report.get("sightings") or []) and (report.get("raw_mentions") or [])
+    # Do not name-cache empty/sparse/heuristic reports — retry can improve later
+    if (
+        report.get("empty")
+        or report.get("extraction_engine") != "gemini"
+        or (
+            not (report.get("sightings") or []) and (report.get("raw_mentions") or [])
+        )
     ):
-        # Still keep by id briefly so PDF works for this session
         _id_cache[report["report_id"]] = (time.time() + CACHE_TTL_SECONDS, report)
         return report
 

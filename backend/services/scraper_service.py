@@ -176,6 +176,7 @@ async def search_google_queries(client: httpx.AsyncClient, full_name: str) -> Li
         f'site:instagram.com "{full_name}"',
         f'site:facebook.com "{full_name}"',
         f'site:tiktok.com "{full_name}"',
+        f'site:youtube.com "{full_name}"',
         f'site:reddit.com "{full_name}"',
         f'site:news.google.com "{full_name}" missing',
     ]
@@ -334,109 +335,220 @@ async def search_twitter(client: httpx.AsyncClient, full_name: str) -> List[Dict
 
 
 async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict[str, Any]]:
-    """YouTube Data API v3 search + top comments (optional key)."""
+    """
+    YouTube mentions via (in order):
+      1. YouTube Data API v3 (if YOUTUBE_API_KEY set)
+      2. SerpAPI YouTube engine (if SERPAPI_KEY set) — more reliable than Google site:
+      3. Google site:youtube.com / site:youtu.be SerpAPI fallback
+    """
     settings = get_settings()
-    if not _configured(settings.youtube_api_key):
-        # Fallback: Google indexed YouTube pages
-        return await _serp_search(client, f'site:youtube.com "{full_name}"', num=15)
-
+    name = " ".join(full_name.split())
     results: List[Dict[str, Any]] = []
-    try:
-        resp = await client.get(
-            "https://www.googleapis.com/youtube/v3/search",
-            params={
-                "part": "snippet",
-                "q": full_name,
-                "type": "video",
-                "maxResults": 10,
-                "key": settings.youtube_api_key,
-            },
-        )
-        if resp.status_code != 200:
-            return results
-        items = resp.json().get("items") or []
-        video_ids = []
-        for item in items:
-            sn = item.get("snippet") or {}
-            vid = (item.get("id") or {}).get("videoId") or ""
-            if vid:
-                video_ids.append(vid)
-            results.append(
-                _normalize_result(
-                    source="youtube",
-                    title=sn.get("title") or "",
-                    snippet=sn.get("description") or "",
-                    url=f"https://www.youtube.com/watch?v={vid}" if vid else "",
-                    date=(sn.get("publishedAt") or "")[:10],
-                )
-            )
 
-        # Pull a few top comments per video (best-effort)
-        async def _comments(video_id: str) -> List[Dict[str, Any]]:
-            try:
-                cr = await client.get(
-                    "https://www.googleapis.com/youtube/v3/commentThreads",
-                    params={
-                        "part": "snippet",
-                        "videoId": video_id,
-                        "maxResults": 5,
-                        "order": "relevance",
-                        "textFormat": "plainText",
-                        "key": settings.youtube_api_key,
-                    },
-                )
-                if cr.status_code != 200:
-                    return []
-                out = []
-                for thread in cr.json().get("items") or []:
-                    top = (
-                        ((thread.get("snippet") or {}).get("topLevelComment") or {}).get("snippet")
-                        or {}
-                    )
-                    out.append(
+    # --- 1) Official YouTube Data API ---
+    if _configured(settings.youtube_api_key):
+        try:
+            resp = await client.get(
+                "https://www.googleapis.com/youtube/v3/search",
+                params={
+                    "part": "snippet",
+                    "q": name,
+                    "type": "video",
+                    "maxResults": 15,
+                    "key": settings.youtube_api_key,
+                },
+            )
+            if resp.status_code == 200:
+                items = resp.json().get("items") or []
+                video_ids = []
+                for item in items:
+                    sn = item.get("snippet") or {}
+                    vid = (item.get("id") or {}).get("videoId") or ""
+                    if vid:
+                        video_ids.append(vid)
+                    results.append(
                         _normalize_result(
                             source="youtube",
-                            title="Comment",
-                            snippet=top.get("textDisplay") or "",
-                            url=f"https://www.youtube.com/watch?v={video_id}",
-                            date=(top.get("publishedAt") or "")[:10],
+                            title=sn.get("title") or "",
+                            snippet=sn.get("description") or "",
+                            url=f"https://www.youtube.com/watch?v={vid}" if vid else "",
+                            date=(sn.get("publishedAt") or "")[:10],
                         )
                     )
-                return out
-            except Exception:  # noqa: BLE001
-                return []
 
-        comment_batches = await asyncio.gather(
-            *[_comments(vid) for vid in video_ids[:5]],
-            return_exceptions=True,
-        )
-        for batch in comment_batches:
-            if isinstance(batch, list):
-                results.extend(batch)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("YouTube search failed: %s", exc)
+                async def _comments(video_id: str) -> List[Dict[str, Any]]:
+                    try:
+                        cr = await client.get(
+                            "https://www.googleapis.com/youtube/v3/commentThreads",
+                            params={
+                                "part": "snippet",
+                                "videoId": video_id,
+                                "maxResults": 5,
+                                "order": "relevance",
+                                "textFormat": "plainText",
+                                "key": settings.youtube_api_key,
+                            },
+                        )
+                        if cr.status_code != 200:
+                            return []
+                        out = []
+                        for thread in cr.json().get("items") or []:
+                            top = (
+                                ((thread.get("snippet") or {}).get("topLevelComment") or {}).get(
+                                    "snippet"
+                                )
+                                or {}
+                            )
+                            out.append(
+                                _normalize_result(
+                                    source="youtube",
+                                    title="Comment",
+                                    snippet=top.get("textDisplay") or "",
+                                    url=f"https://www.youtube.com/watch?v={video_id}",
+                                    date=(top.get("publishedAt") or "")[:10],
+                                )
+                            )
+                        return out
+                    except Exception:  # noqa: BLE001
+                        return []
 
-    return results
+                comment_batches = await asyncio.gather(
+                    *[_comments(vid) for vid in video_ids[:5]],
+                    return_exceptions=True,
+                )
+                for batch in comment_batches:
+                    if isinstance(batch, list):
+                        results.extend(batch)
+                if results:
+                    return results
+            else:
+                logger.warning("YouTube Data API status %s: %s", resp.status_code, resp.text[:200])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("YouTube Data API failed: %s", exc)
+
+    # --- 2) SerpAPI native YouTube engine ---
+    if _configured(settings.serpapi_key):
+        queries = [name, f"{name} missing", f'"{name}"', f"{name} last seen"]
+        for q in queries:
+            try:
+                resp = await client.get(
+                    "https://serpapi.com/search.json",
+                    params={
+                        "engine": "youtube",
+                        "search_query": q,
+                        "api_key": settings.serpapi_key,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                for item in data.get("video_results") or []:
+                    link = item.get("link") or ""
+                    if not link:
+                        vid = item.get("video_id") or ""
+                        link = f"https://www.youtube.com/watch?v={vid}" if vid else ""
+                    results.append(
+                        _normalize_result(
+                            source="youtube",
+                            title=item.get("title") or "",
+                            snippet=item.get("description") or "",
+                            url=link,
+                            date=item.get("published_date") or "",
+                        )
+                    )
+                # Shorts often carry missing-person appeals
+                for block in data.get("shorts_results") or []:
+                    for short in block.get("shorts") or []:
+                        link = short.get("link") or ""
+                        vid = short.get("video_id") or ""
+                        if not link and vid:
+                            link = f"https://www.youtube.com/shorts/{vid}"
+                        results.append(
+                            _normalize_result(
+                                source="youtube",
+                                title=short.get("title") or "YouTube Short",
+                                snippet="",
+                                url=link,
+                                date="",
+                            )
+                        )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("SerpAPI YouTube engine failed for %r: %s", q, exc)
+
+        if results:
+            # Light dedupe within this source
+            seen = set()
+            uniq = []
+            for item in results:
+                key = (item.get("url") or "").split("?")[0]
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                uniq.append(item)
+            return uniq[:25]
+
+    # --- 3) Google site: fallback (often empty now, but cheap to try) ---
+    for q in (
+        f'site:youtube.com "{name}"',
+        f'site:youtu.be "{name}"',
+        f'site:youtube.com {name} missing',
+    ):
+        batch = await _serp_search(client, q, num=15)
+        for item in batch:
+            item = dict(item)
+            item["source"] = "youtube"
+            results.append(item)
+        if results:
+            break
+
+    return results[:25]
 
 
 def _dedupe_raw(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Drop duplicate URLs / near-identical snippets."""
-    seen_urls = set()
+    """Drop duplicate URLs / near-identical snippets. Prefer platform-tagged sources."""
+    prefer = {
+        "youtube": 3,
+        "instagram": 3,
+        "facebook": 3,
+        "reddit": 3,
+        "tiktok": 3,
+        "x": 2,
+        "twitter": 2,
+        "news": 2,
+        "google": 1,
+        "web": 0,
+    }
+    best: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
     seen_text = set()
-    out = []
+
     for item in items:
-        url = (item.get("url") or "").split("#")[0].rstrip("/")
+        url = (item.get("url") or "").split("#")[0].split("?")[0].rstrip("/")
         text_key = re.sub(r"\s+", " ", (item.get("text") or item.get("snippet") or "").lower())[:160]
-        if url and url in seen_urls:
+        src = (item.get("source") or "web").lower()
+        score = prefer.get(src, 0)
+
+        if url:
+            prev = best.get(url)
+            if prev is None:
+                best[url] = item
+                order.append(url)
+            else:
+                prev_score = prefer.get((prev.get("source") or "web").lower(), 0)
+                if score > prev_score:
+                    best[url] = item
             continue
+
         if text_key and text_key in seen_text:
             continue
-        if url:
-            seen_urls.add(url)
         if text_key:
             seen_text.add(text_key)
-        out.append(item)
-    return out
+        # URL-less items keep insertion order via synthetic key
+        key = f"text:{len(order)}:{text_key[:40]}"
+        best[key] = item
+        order.append(key)
+
+    return [best[k] for k in order if k in best]
 
 
 async def collect_raw_mentions(full_name: str) -> Dict[str, Any]:
@@ -455,16 +567,12 @@ async def collect_raw_mentions(full_name: str) -> Dict[str, Any]:
             search_newsapi(client, name),
             search_twitter(client, name),
             search_youtube(client, name),
+            search_reddit(client, name),
         ]
-        # Free Reddit JSON as backup; skipped in status labeling when Apify returns hits
-        if not use_apify:
-            tasks.append(search_reddit(client, name))
-        else:
-            tasks.append(asyncio.sleep(0))  # placeholder so gather arity stays simple
 
         base = await asyncio.gather(*tasks, return_exceptions=True)
 
-    google, news, twitter, youtube, reddit_or_none = base
+    google, news, twitter, youtube, reddit_public = base
 
     apify_bundle: Any = {"raw_mentions": [], "sources_status": {}}
     if use_apify:
@@ -492,23 +600,12 @@ async def collect_raw_mentions(full_name: str) -> Dict[str, Any]:
     _absorb("newsapi", news, needs_key=True, key_ok=_configured(settings.newsapi_key))
     _absorb("twitter_x", twitter)
     _absorb("youtube", youtube)
+    _absorb("reddit_public", reddit_public)
 
     if use_apify:
         sources_status.update(apify_bundle.get("sources_status") or {})
         raw.extend(apify_bundle.get("raw_mentions") or [])
-        apify_reddit_hits = sum(1 for m in raw if m.get("source") == "reddit")
-        if apify_reddit_hits == 0:
-            # Apify returned nothing for Reddit — use public JSON fallback
-            try:
-                async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-                    fallback = await search_reddit(client, name)
-                _absorb("reddit_public_fallback", fallback)
-            except Exception as exc:  # noqa: BLE001
-                sources_status["reddit_public_fallback"] = f"error: {exc}"
-        else:
-            sources_status["reddit_public"] = "skipped (using Apify Reddit crawler)"
     else:
-        _absorb("reddit", reddit_or_none)
         sources_status.setdefault("apify_reddit", "skipped (APIFY_TOKEN not configured)")
         sources_status.setdefault("apify_instagram", "skipped (APIFY_TOKEN not configured)")
         sources_status.setdefault("apify_facebook", "skipped (APIFY_TOKEN not configured)")
