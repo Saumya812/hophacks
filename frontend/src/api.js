@@ -78,4 +78,17 @@ export function naturalSearch(query) {
   })
 }
 
+/** Smart Person Search — scrape public sources + Gemini report */
+export function lookupSearch(payload) {
+  return request('/lookup/search', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+/** Fetch a cached lookup report by id */
+export function getLookupReport(reportId) {
+  return request(`/lookup/report/${reportId}`)
+}
+
 export { API_BASE }

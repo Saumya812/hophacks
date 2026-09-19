@@ -35,9 +35,12 @@ export default function Layout() {
               Missing persons
             </span>
           </Link>
-          <nav className="flex items-center gap-5 sm:gap-8">
+          <nav className="flex items-center gap-4 sm:gap-7">
             <NavLink to="/" end className={navClass}>
               Cases
+            </NavLink>
+            <NavLink to="/lookup" className={navClass}>
+              Lookup
             </NavLink>
             <NavLink to="/report" className={navClass}>
               Report

@@ -24,8 +24,15 @@ class Settings(BaseSettings):
     supabase_url: str = "https://YOUR_PROJECT.supabase.co"
     supabase_key: str = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
 
-    # Google Gemini — used only by POST /search/natural
+    # Google Gemini — natural search + Smart Person Search extraction
     gemini_api_key: str = "YOUR_GEMINI_API_KEY"
+
+    # Smart Person Search / lookup scrapers (all optional — skipped if unset)
+    serpapi_key: str = ""
+    newsapi_key: str = ""
+    youtube_api_key: str = ""
+    rapidapi_key: str = ""
+    twitter_rapidapi_host: str = "twitter-api45.p.rapidapi.com"
 
     # Comma-separated list of allowed frontend origins
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
