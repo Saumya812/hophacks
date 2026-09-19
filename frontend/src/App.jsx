@@ -9,6 +9,7 @@ import PersonProfile from './pages/PersonProfile.jsx'
 import Report from './pages/Report.jsx'
 import Tip from './pages/Tip.jsx'
 import Lookup from './pages/Lookup.jsx'
+import Found from './pages/Found.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 
 function ScrollToTop() {
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/report" element={<Report />} />
           <Route path="/tip/:id" element={<Tip />} />
           <Route path="/lookup" element={<Lookup />} />
+          <Route path="/found" element={<Found />} />
           <Route path="/dashboard" element={<Dashboard />} />
         </Route>
       </Routes>

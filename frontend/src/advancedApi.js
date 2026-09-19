@@ -85,6 +85,17 @@ export function listCaseUpdates(personId) {
   return request(`/persons/${personId}/updates`)
 }
 
+export function listCaseSources(personId) {
+  return request(`/persons/${personId}/sources`)
+}
+
+export function addCaseSource(personId, payload) {
+  return request(`/persons/${personId}/sources`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
 export function inviteCoordinator(personId, payload) {
   return request(`/persons/${personId}/coordinators`, {
     method: 'POST',

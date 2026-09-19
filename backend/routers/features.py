@@ -446,6 +446,69 @@ def list_updates(person_id: UUID):
         return {"count": 0, "updates": [], "note": "Run migration 003"}
 
 
+class SourceLinkCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    url: str = Field(..., min_length=8, max_length=2000)
+    source_type: str = Field("other", max_length=40)
+    published_at: Optional[str] = None
+
+
+def _validate_http_url(url: str) -> str:
+    s = (url or "").strip()
+    low = s.lower()
+    if not (low.startswith("http://") or low.startswith("https://")):
+        raise HTTPException(400, "URL must start with http:// or https://")
+    return s
+
+
+@router.get("/persons/{person_id}/sources")
+def list_case_sources(person_id: UUID):
+    """Read-only source library for a case (migration 005)."""
+    try:
+        rows = (
+            get_supabase()
+            .table("case_source_links")
+            .select("*")
+            .eq("person_id", str(person_id))
+            .order("created_at", desc=True)
+            .execute()
+            .data
+            or []
+        )
+        return {"count": len(rows), "sources": rows}
+    except Exception:
+        return {"count": 0, "sources": [], "note": "Run migration 005 for case_source_links"}
+
+
+@router.post("/persons/{person_id}/sources")
+def add_case_source(
+    person_id: UUID,
+    payload: SourceLinkCreate,
+    x_owner_token: Optional[str] = Header(None, alias="X-Owner-Token"),
+):
+    """Owner-only add to the small source library (requires X-Owner-Token when set)."""
+    require_owner(person_id, x_owner_token)
+    url = _validate_http_url(payload.url)
+    st = (payload.source_type or "other").strip().lower()
+    if st not in {"agency_listing", "news_article", "public_appeal", "other"}:
+        st = "other"
+    row = {
+        "person_id": str(person_id),
+        "title": payload.title.strip()[:200],
+        "url": url,
+        "source_type": st,
+        "published_at": payload.published_at or None,
+    }
+    try:
+        res = get_supabase().table("case_source_links").insert(row).execute()
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "unique" in msg or "duplicate" in msg:
+            raise HTTPException(409, "This URL is already linked to the case") from exc
+        raise HTTPException(503, f"case_source_links missing — run migration 005 ({exc})") from exc
+    return {"source": (res.data or [row])[0]}
+
+
 @router.post("/persons/{person_id}/coordinators")
 def invite_coordinator(
     person_id: UUID,
