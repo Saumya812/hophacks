@@ -120,15 +120,46 @@ def build_lookup_pdf(report: Dict[str, Any]) -> bytes:
     else:
         story.append(Paragraph(summary_html, body))
 
-    # Sighting timeline
-    story.append(Paragraph("Sighting Timeline", h2))
+    # Sighting claims (chronological social/web claims)
+    claims: List[Dict] = report.get("claims") or [
+        s for s in sightings if (s.get("kind") or "").lower() == "sighting"
+    ]
+    story.append(Paragraph("Sighting Claims", h2))
+    if not claims:
+        story.append(
+            Paragraph(
+                "No witness sighting claims extracted. News “last seen” reports are listed under All Extracted Mentions.",
+                body,
+            )
+        )
+    else:
+        for i, c in enumerate(claims, start=1):
+            summary_line = c.get("claim_summary") or (
+                f"{c.get('username') or 'Someone'} on {c.get('source') or 'web'} "
+                f"claims to have seen the person"
+                + (f" on {c.get('date')}" if c.get("date") else "")
+                + (f" at around {c.get('time')}" if c.get("time") else "")
+                + (f" near {c.get('location')}" if c.get("location") else "")
+            )
+            line = (
+                f"<b>{i}.</b> {_safe(summary_line, 400)}<br/>"
+                f"<i>\"{_safe(c.get('quote'), 220)}\"</i><br/>"
+                f"<font color='#4d6786'>{_safe(c.get('url'), 200)}</font>"
+            )
+            story.append(Paragraph(line, body))
+            story.append(Spacer(1, 6))
+
+    # All extracted mentions
+    story.append(Paragraph("All Extracted Mentions", h2))
     if not sightings:
         story.append(Paragraph("No structured sightings extracted.", body))
     else:
         for s in sightings:
             conf = (s.get("confidence") or "low").upper()
             line = (
-                f"<b>[{conf}]</b> {_safe(s.get('source'))} · {_safe(s.get('date') or 'undated')} · "
+                f"<b>[{conf}]</b> {_safe(s.get('source'))}"
+                f"{(' · @' + _safe(s.get('username'))) if s.get('username') else ''} · "
+                f"{_safe(s.get('date') or 'undated')} · "
                 f"{_safe(s.get('location') or 'no location')}<br/>"
                 f"\"{_safe(s.get('quote'), 280)}\"<br/>"
                 f"<font color='#4d6786'>{_safe(s.get('url'), 200)}</font>"
@@ -154,9 +185,11 @@ def build_lookup_pdf(report: Dict[str, Any]) -> bytes:
     # Raw mentions (abbreviated)
     story.append(Paragraph("Raw Mentions (sample)", h2))
     for item in raw_mentions[:30]:
+        user = item.get("username")
+        user_bit = f" · @{_safe(user)}" if user else ""
         story.append(
             Paragraph(
-                f"<b>{_safe(item.get('source'))}</b> · {_safe(item.get('date'))}<br/>"
+                f"<b>{_safe(item.get('source'))}</b>{user_bit} · {_safe(item.get('date'))}<br/>"
                 f"{_safe(item.get('snippet') or item.get('text') or item.get('title'), 220)}<br/>"
                 f"<font color='#4d6786'>{_safe(item.get('url'), 180)}</font>",
                 small,

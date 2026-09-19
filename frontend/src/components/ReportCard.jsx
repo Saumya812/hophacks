@@ -89,6 +89,7 @@ export default function ReportCard({ report }) {
 
   const summary = report?.summary || {}
   const sightings = report?.sightings || []
+  const claims = report?.claims || []
   const locations = report?.locations || []
   const rawMentions = report?.raw_mentions || []
   const sourcesStatus = report?.sources_status || {}
@@ -173,13 +174,21 @@ export default function ReportCard({ report }) {
               </div>
             )}
           </div>
-          <dl className="grid flex-1 gap-3 text-sm sm:grid-cols-3">
+          <dl className="grid flex-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <dt className="text-[11px] font-bold uppercase tracking-wider text-navy/45">
                 Mentions found
               </dt>
               <dd className="mt-1 font-display text-2xl text-navy">
                 {summary.total_mentions ?? sightings.length}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-bold uppercase tracking-wider text-navy/45">
+                Sighting claims
+              </dt>
+              <dd className="mt-1 font-display text-2xl text-navy">
+                {summary.total_claims ?? claims.length}
               </dd>
             </div>
             <div>
@@ -230,12 +239,66 @@ export default function ReportCard({ report }) {
         )}
       </section>
 
+      {/* SIGHTING CLAIMS — chronological social/web claims */}
+      <section className="space-y-3">
+        <div className="border-b border-navy/15 pb-2">
+          <h3 className="font-display text-2xl text-navy">Sighting claims</h3>
+          <p className="text-sm text-navy/55">
+            Witness-style claims only (someone says they personally saw the person). News
+            “last seen” reports and SERP mashups are filtered out.
+          </p>
+        </div>
+        {claims.length === 0 ? (
+          <p className="text-sm text-navy/60">
+            No witness sighting claims yet. Official “last seen” news stays under All extracted
+            mentions. When Apify/social comments include “I saw them near …”, they appear here.
+          </p>
+        ) : (
+          <ol className="list-decimal space-y-3 pl-5 marker:font-semibold marker:text-navy">
+            {claims.map((c, idx) => (
+              <li key={`claim-${c.url || idx}-${idx}`} className="pl-1 text-sm leading-relaxed text-navy/90">
+                <p>
+                  {c.claim_summary ||
+                    [
+                      c.username ? `@${c.username}` : 'Someone',
+                      `on ${c.source || 'web'}`,
+                      'claims to have seen the person',
+                      c.date ? `on ${formatReportDate(c.date)}` : null,
+                      c.time ? `at around ${c.time}` : null,
+                      c.location ? `near ${c.location}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                </p>
+                {c.quote ? (
+                  <p className="mt-1 text-navy/60">&ldquo;{c.quote}&rdquo;</p>
+                ) : null}
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-navy/45">
+                  <PlatformBadge source={c.source} />
+                  <span>{(c.confidence || 'low').toUpperCase()}</span>
+                  {c.url ? (
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-navy underline underline-offset-2"
+                    >
+                      Open source
+                    </a>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+
       {/* TIMELINE */}
       <section className="space-y-3">
         <div className="border-b border-navy/15 pb-2">
-          <h3 className="font-display text-2xl text-navy">Sighting timeline</h3>
+          <h3 className="font-display text-2xl text-navy">All extracted mentions</h3>
           <p className="text-sm text-navy/55">
-            Green = high confidence · Yellow = medium / low
+            Green = high confidence · Yellow = medium / low — includes news and profiles
           </p>
         </div>
         {sightings.length === 0 ? (

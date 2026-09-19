@@ -46,6 +46,9 @@ def _normalize_result(
     snippet: str = "",
     url: str = "",
     date: str = "",
+    username: str = "",
+    kind: str = "post",
+    time: str = "",
 ) -> Dict[str, Any]:
     """Uniform raw-mention shape before Gemini processing."""
     text = " ".join(part for part in [title, snippet] if part).strip()
@@ -56,6 +59,9 @@ def _normalize_result(
         "text": text[:2000],
         "url": url or "",
         "date": date or "",
+        "username": (username or "").lstrip("@")[:80],
+        "kind": (kind or "post")[:40],
+        "time": (time or "")[:40],
     }
 
 

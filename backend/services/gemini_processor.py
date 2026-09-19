@@ -38,6 +38,10 @@ def parse_mention_date(raw: Any) -> Optional[datetime]:
     if not s or s.lower() in {"—", "-", "n/a", "unknown", "undated", "none", "null"}:
         return None
 
+    # Normalize common abbreviations (Sept. → Sep)
+    s = re.sub(r"\bSept\.?\b", "Sep", s, flags=re.I)
+    s = re.sub(r"\b([A-Za-z]{3,9})\.", r"\1", s)  # Oct. → Oct
+
     # ISO-ish: 2026-08-09 or 2026-08-09T12:00:00Z
     iso = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[T\s].*)?$", s)
     if iso:
@@ -98,39 +102,166 @@ def format_display_date(raw: Any) -> Optional[str]:
 
 SYSTEM_PROMPT_TEMPLATE = """
 You are analyzing public mentions of a missing person named {name}.
-Below are raw text snippets from various public sources.
+Below are raw text snippets from public web and social sources (including
+individual social-media comments with usernames when available).
 
-Extract ONLY mentions that clearly refer to this exact person (full name match
-or unambiguous reference). Do NOT include unrelated people who only share a
-first name or last name.
+Extract ONLY items that clearly refer to this exact person.
+Do NOT include unrelated people who only share a first or last name.
+Do NOT include pure "prayers / sharing / tagging / awareness" posts with no new facts.
+Do NOT treat Google SERP mashups (unrelated headline + "..." + missing-person blurb) as sightings.
 
-Prefer mentions that contain at least one of:
-- A location (city, neighborhood, street, landmark)
-- A time or date reference
-- A physical description
-- A sighting / "last seen" / "missing" news context
+Kinds:
+- sighting = a WITNESS claim (someone says they personally saw/spotted the person).
+  Examples: "I saw her near Crystal City last night", "think I spotted him at the metro".
+  NOT sighting: news saying "was last seen on Sept 15", family pleas, TikTok awareness videos.
+- news = media / official missing-person reporting (last-seen facts, searches underway).
+- profile = social profile pages for this exact name.
+- other = everything else that still clearly refers to this person.
 
-Also include public social/profile pages that clearly belong to this exact name
-(Facebook, Instagram, LinkedIn, etc.) even if they lack a location.
-Mark those confidence as "low" and put location as "" unless stated.
-
-For each valid mention return JSON:
+For each valid item return JSON:
 {{
-  "source": "platform name",
-  "date": "date if mentioned",
-  "location": "location if mentioned",
-  "quote": "exact relevant quote under 100 words (or page title if that is all you have)",
+  "source": "platform name (reddit/instagram/facebook/google/news/...)",
+  "username": "commenter or poster handle if known, else empty string",
+  "date": "sighting date if known for kind=sighting; else article/post date",
+  "time": "time of day if known (e.g. evening, 7pm), else empty string",
+  "location": "place / vicinity if known, else empty string",
+  "quote": "short exact quote under 80 words — ONLY the part about {name}, never unrelated headlines",
+  "claim_summary": "For kind=sighting only: [username] on [platform] claims to have seen the person on [date] at around [time] near [place]. For news: [Outlet] reports that {name} was last seen on [date] near [place]. Omit unknown parts.",
   "confidence": "high/medium/low",
   "url": "source url",
   "kind": "sighting|news|profile|other"
 }}
 
-Ignore spam and people who only share a first name or last name.
-Include every distinct public page/post that clearly refers to this person
-(news, social, posters, family appeals) — duplicates from reposts are OK.
-If the only hits are profile pages for this exact name, still return them as low-confidence profile mentions.
+Use kind=sighting ONLY for first-person / witness language. Prefer claim dates near the case's reported disappearance window when that is clear from the snippets.
 Return only a JSON array. Nothing else.
 """.strip()
+
+
+_WITNESS_RE = re.compile(
+    r"\b("
+    r"i\s+(just\s+)?(saw|spotted|noticed|witnessed)|"
+    r"we\s+(saw|spotted|noticed)|"
+    r"think\s+i\s+saw|might\s+have\s+seen|believe\s+i\s+saw|"
+    r"claimed\s+to\s+(have\s+)?seen|"
+    r"saw\s+(him|her|them|someone|a\s+(girl|woman|guy|man|person))|"
+    r"spotted\s+(him|her|them|someone)|"
+    r"witness(ed)?\b"
+    r")",
+    re.I,
+)
+_OFFICIAL_LAST_SEEN_RE = re.compile(
+    r"\b("
+    r"was\s+last\s+seen|last\s+seen(?:\s+on|\s+leaving|\s+near|\s+at)?|"
+    r"reported\s+missing|search\s+(is\s+)?underway|"
+    r"pleads?\s+for|family\s+(of|pleads)|raising\s+awareness|missing\s+person|"
+    r"have\s+you\s+seen|please\s+share|amber\s+alert"
+    r")\b",
+    re.I,
+)
+_MASHUP_NOISE_RE = re.compile(
+    r"\b("
+    r"senator|lindsey\s+graham|traitor|arrested|grand\s+prix|junk\s+food|"
+    r"coach,\s*5\s+teens|track\s+conditions|verbal\s+attacks|53-year-old"
+    r")\b",
+    re.I,
+)
+
+
+def _quote_about_person(name: str, quote: str) -> str:
+    """Keep only the clause that mentions the person (drop SERP mashup head)."""
+    q = (quote or "").strip()
+    if not q:
+        return ""
+    name_l = " ".join(name.split()).lower()
+    tokens = _name_tokens(name)
+    low = q.lower()
+    idx = low.find(name_l) if name_l else -1
+    if idx < 0 and tokens:
+        idx = low.find(tokens[-1])
+    if idx > 40:
+        return q[idx:][:400].strip(" .…")
+    if "..." in q or "…" in q:
+        parts = re.split(r"\.\.\.|…", q)
+        for part in reversed(parts):
+            pl = part.lower()
+            if name_l and name_l in pl:
+                return part.strip(" .…")[:400]
+            if tokens and tokens[-1] in pl:
+                return part.strip(" .…")[:400]
+    return q[:400]
+
+
+def _is_serp_mashup(item: Dict[str, Any], name: str = "") -> bool:
+    quote = item.get("quote") or item.get("snippet") or item.get("text") or ""
+    title = item.get("title") or ""
+    blob = f"{title} {quote}"
+    low = blob.lower()
+    name_l = " ".join((name or "").split()).lower()
+    tokens = _name_tokens(name)
+    person_idx = low.find(name_l) if name_l else -1
+    if person_idx < 0 and tokens:
+        person_idx = low.find(tokens[-1])
+
+    noise = _MASHUP_NOISE_RE.search(low)
+    if noise and person_idx > noise.start():
+        return True
+
+    # Generic SERP mashup: ellipsis joining unrelated headline with person blurb
+    if ("..." in blob or "…" in blob) and person_idx > 60:
+        title_l = title.lower()
+        title_has = (name_l and name_l in title_l) or (
+            tokens and tokens[-1] in title_l and (len(tokens) < 2 or tokens[0] in title_l)
+        )
+        if not title_has:
+            return True
+    return False
+
+
+def format_claim_line(item: Dict[str, Any]) -> str:
+    """Witness phrasing only for true sightings; never for news mashups."""
+    kind = (item.get("kind") or "").lower()
+    quote = item.get("quote") or ""
+    summary = str(item.get("claim_summary") or "").strip()
+    if (
+        kind == "sighting"
+        and summary
+        and _WITNESS_RE.search(f"{quote} {summary}")
+        and "claims to have seen" in summary.lower()
+    ):
+        return summary
+
+    source = (item.get("source") or "web").strip()
+    user = (item.get("username") or "").strip().lstrip("@")
+    if user:
+        handle = (
+            f"@{user}"
+            if source.lower()
+            in {"instagram", "twitter", "x", "tiktok", "reddit", "facebook"}
+            else user
+        )
+    else:
+        handle = "Someone"
+
+    date = (item.get("date") or "").strip()
+    time_s = (item.get("time") or "").strip()
+    place = (item.get("location") or item.get("place") or "").strip()
+
+    if kind != "sighting":
+        parts = [f"{handle} on {source} reports about the person"]
+        if date:
+            parts.append(f"(dated {date})")
+        if place:
+            parts.append(f"near {place}")
+        return " ".join(parts)
+
+    parts = [f"{handle} on {source} claims to have seen the person"]
+    if date:
+        parts.append(f"on {date}")
+    if time_s:
+        parts.append(f"at around {time_s}")
+    if place:
+        parts.append(f"near {place}")
+    return " ".join(parts)
 
 
 def _name_tokens(name: str) -> List[str]:
@@ -166,9 +297,41 @@ def _name_match_strength(name: str, blob: str, url: str = "") -> str:
 
 
 def _mentions_person(name: str, item: Dict[str, Any]) -> bool:
-    blob = f"{item.get('title') or ''} {item.get('quote') or item.get('text') or item.get('snippet') or ''}"
+    blob = (
+        f"{item.get('title') or ''} {item.get('quote') or item.get('text') or item.get('snippet') or ''} "
+        f"{item.get('claim_summary') or ''}"
+    )
     url = item.get("url") or ""
-    return _name_match_strength(name, blob, url) in {"full", "strong"}
+    if _name_match_strength(name, blob, url) in {"full", "strong"}:
+        return True
+    # Comments often omit the name when the parent post is about the person
+    title = item.get("title") or ""
+    if "comment on" in title.lower() and _name_match_strength(name, title, "") in {"full", "strong"}:
+        return True
+    if (item.get("kind") or "").lower() == "sighting" and item.get("username"):
+        return True
+    return False
+
+
+def _enrich_mentions_from_raw(
+    cleaned: List[Dict[str, Any]],
+    raw_mentions: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Backfill username/time from raw Apify rows when the model omits them."""
+    by_url: Dict[str, Dict[str, Any]] = {}
+    for r in raw_mentions:
+        u = (r.get("url") or "").split("?")[0].rstrip("/")
+        if u and u not in by_url:
+            by_url[u] = r
+    for m in cleaned:
+        u = (m.get("url") or "").split("?")[0].rstrip("/")
+        raw = by_url.get(u) or {}
+        if not m.get("username") and raw.get("username"):
+            m["username"] = str(raw["username"]).lstrip("@")[:80]
+        if not m.get("time") and raw.get("time"):
+            m["time"] = str(raw["time"])[:40]
+        m["claim_summary"] = format_claim_line(m)
+    return cleaned
 
 
 def _extract_json_array(text: str) -> List[Dict[str, Any]]:
@@ -277,26 +440,44 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
         ):
             continue
 
-        # Drop obvious SERP mashups: title is unrelated AND name only appears late in blob
+        # Drop obvious SERP mashups: noise headline + person name later
+        if _is_serp_mashup({"title": title, "quote": text}, name):
+            continue
+
+        # Drop Google mashups where title is unrelated AND name only appears late
         if source in {"google", "web", "news"} and not title_has_name and strength == "full":
             low = blob.lower()
             idx = low.find(name_l) if name_l else -1
             if idx > 160 and not has_signal:
                 continue
+            if idx > 80 and _MASHUP_NOISE_RE.search(low[:idx]):
+                continue
 
         loc_match = location_words.search(blob)
-        if has_signal and (has_loc or has_time or title_has_name):
+        is_witness = bool(_WITNESS_RE.search(blob))
+        is_official = bool(_OFFICIAL_LAST_SEEN_RE.search(blob)) and not is_witness
+        if is_witness and (has_loc or has_time or title_has_name):
             confidence = "medium"
-            kind = "sighting" if re.search(r"sight|last\s+seen", blob, re.I) else "news"
+            kind = "sighting"
+        elif has_signal and (has_loc or has_time or title_has_name):
+            confidence = "medium"
+            kind = "news" if is_official or has_signal else "other"
+        elif (item.get("kind") or "").lower() == "comment" and is_witness and (has_loc or has_time):
+            confidence = "medium"
+            kind = "sighting"
         elif is_profile and not (has_loc or has_signal):
             confidence = "low"
             kind = "profile"
         elif title_has_name or strength == "full":
             confidence = "low"
-            kind = "news" if has_signal else "other"
+            kind = "news" if (has_signal or is_official) else "other"
         else:
             confidence = "low"
             kind = "news" if has_signal else "other"
+
+        # Never label official last-seen / mashups as sightings
+        if kind == "sighting" and (is_official or _is_serp_mashup({"title": title, "quote": text}, name)):
+            kind = "news"
 
         location = ""
         if loc_match:
@@ -312,7 +493,9 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
         out.append(
             {
                 "source": item.get("source") or "web",
+                "username": (item.get("username") or "").lstrip("@")[:80],
                 "date": format_display_date(item.get("date")) or "",
+                "time": (item.get("time") or "")[:40],
                 "location": location,
                 "quote": (text or title or "Public page mentioning this name")[:400],
                 "confidence": confidence,
@@ -320,6 +503,7 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
                 "kind": kind,
             }
         )
+        out[-1]["claim_summary"] = format_claim_line(out[-1])
         if len(out) >= 60:
             break
     return out
@@ -336,19 +520,129 @@ def _parse_retry_seconds(exc: BaseException) -> float:
     return 8.0
 
 
-def _normalize_mention(m: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_mention(m: Dict[str, Any], name: str = "") -> Dict[str, Any]:
     conf = str(m.get("confidence") or "low").lower()
     if conf not in {"high", "medium", "low"}:
         conf = "low"
-    return {
+    kind = str(m.get("kind") or "other")[:40]
+    quote = str(m.get("quote") or "")[:500]
+    if name:
+        quote = _quote_about_person(name, quote)
+    out = {
         "source": str(m.get("source") or "web")[:60],
-        "date": format_display_date(m.get("date")) or "",
-        "location": str(m.get("location") or "")[:120],
-        "quote": str(m.get("quote") or "")[:500],
+        "username": str(m.get("username") or "").lstrip("@")[:80],
+        "date": format_display_date(m.get("date")) or str(m.get("date") or "")[:40],
+        "time": str(m.get("time") or "")[:40],
+        "location": str(m.get("location") or m.get("place") or "")[:120],
+        "quote": quote,
         "confidence": conf,
         "url": str(m.get("url") or "")[:500],
-        "kind": str(m.get("kind") or "other")[:40],
+        "kind": kind,
+        "claim_summary": str(m.get("claim_summary") or "")[:400],
     }
+    # Demote news / mashups wrongly labeled as sightings
+    blob = f"{out['quote']} {out['claim_summary']} {out.get('title') or ''}"
+    if out["kind"] == "sighting":
+        if _is_serp_mashup(out, name) or (
+            _OFFICIAL_LAST_SEEN_RE.search(blob) and not _WITNESS_RE.search(blob)
+        ):
+            out["kind"] = "news"
+    out["claim_summary"] = format_claim_line(out)
+    return out
+
+
+def is_sighting_claim(item: Dict[str, Any], name: str = "") -> bool:
+    """
+    True only for witness-style sighting claims.
+    Excludes news 'was last seen', awareness posts, and SERP mashups.
+    """
+    if _is_serp_mashup(item, name):
+        return False
+
+    kind = (item.get("kind") or "").lower()
+    source = (item.get("source") or "").lower()
+    quote = item.get("quote") or ""
+    summary = item.get("claim_summary") or ""
+    blob = f"{quote} {summary} {item.get('title') or ''}"
+
+    # News / official last-seen language is NOT a witness claim
+    if _OFFICIAL_LAST_SEEN_RE.search(blob) and not _WITNESS_RE.search(blob):
+        return False
+
+    # Google/news rows need explicit first-person witness language
+    if source in {"google", "news", "web", "youtube"} and not _WITNESS_RE.search(blob):
+        return False
+
+    # Awareness / share posts without witness language
+    if re.search(r"\b(raising\s+awareness|please\s+share|have\s+you\s+seen)\b", blob, re.I):
+        if not _WITNESS_RE.search(blob):
+            return False
+
+    if kind == "sighting" and _WITNESS_RE.search(blob):
+        return True
+    if kind == "sighting" and item.get("username") and (item.get("location") or item.get("time")):
+        # Social commenter with place/time, even if phrasing is terse
+        if source in {"reddit", "instagram", "facebook", "tiktok", "x", "twitter"}:
+            return True
+
+    if item.get("username") and _WITNESS_RE.search(blob) and (item.get("location") or item.get("time")):
+        return True
+
+    return bool(_WITNESS_RE.search(blob) and (item.get("location") or item.get("time")))
+
+
+def _infer_disappearance_anchor(sightings: List[Dict[str, Any]]) -> Optional[datetime]:
+    """Infer likely disappearance / last-seen date from extracted text."""
+    candidates: List[datetime] = []
+    pat = re.compile(
+        r"last\s+seen(?:\s+on|\s+leaving)?\s*"
+        r"([A-Za-z]+\.?\s+\d{1,2},?\s+20\d{2}|\d{1,2}/\d{1,2}/20\d{2}|20\d{2}-\d{2}-\d{2})",
+        re.I,
+    )
+    for s in sightings:
+        blob = f"{s.get('quote') or ''} {s.get('claim_summary') or ''} {s.get('date') or ''}"
+        for m in pat.finditer(blob):
+            dt = parse_mention_date(m.group(1))
+            if dt:
+                candidates.append(dt)
+    if not candidates:
+        return None
+    # Prefer the most common calendar day
+    counts = Counter(d.date() for d in candidates)
+    best_day = counts.most_common(1)[0][0]
+    return datetime(best_day.year, best_day.month, best_day.day)
+
+
+def _date_near_anchor(item: Dict[str, Any], anchor: datetime, *, before_days: int = 3, after_days: int = 60) -> bool:
+    """Keep claim dates near the disappearance window; undated claims are kept."""
+    dt = parse_mention_date(item.get("date"))
+    if not dt:
+        return True
+    delta = (dt.date() - anchor.date()).days
+    return -before_days <= delta <= after_days
+
+
+def extract_sighting_claims(
+    sightings: List[Dict[str, Any]],
+    name: str = "",
+) -> List[Dict[str, Any]]:
+    """Chronological witness claims only (not news mashups). Mutates sightings in place to demote fakes."""
+    for s in sightings:
+        if name:
+            s["quote"] = _quote_about_person(name, s.get("quote") or "")
+        blob = f"{s.get('quote') or ''} {s.get('claim_summary') or ''}"
+        if (s.get("kind") or "").lower() == "sighting":
+            if _is_serp_mashup(s, name) or (
+                _OFFICIAL_LAST_SEEN_RE.search(blob) and not _WITNESS_RE.search(blob)
+            ):
+                s["kind"] = "news"
+        s["claim_summary"] = format_claim_line(s)
+
+    claims = [s for s in sightings if is_sighting_claim(s, name)]
+    anchor = _infer_disappearance_anchor(sightings)
+    if anchor:
+        claims = [c for c in claims if _date_near_anchor(c, anchor)]
+    return sort_sightings_chronologically(claims)
 
 
 def extract_sightings_with_gemini(
@@ -391,7 +685,10 @@ def extract_sightings_with_gemini(
         payload.append(
             {
                 "source": item.get("source"),
+                "username": item.get("username") or "",
+                "kind": item.get("kind") or "post",
                 "date": item.get("date"),
+                "time": item.get("time") or "",
                 "url": item.get("url"),
                 "text": (item.get("text") or item.get("snippet") or item.get("title") or "")[:600],
             }
@@ -426,11 +723,11 @@ def extract_sightings_with_gemini(
             )
             text = getattr(response, "text", "") or ""
             mentions = _extract_json_array(text)
-            cleaned = [_normalize_mention(m) for m in mentions]
+            cleaned = [_normalize_mention(m, name) for m in mentions]
             cleaned = [m for m in cleaned if _mentions_person(name, m)]
+            cleaned = _enrich_mentions_from_raw(cleaned, raw_mentions)
             if cleaned:
                 # Supplement with strict full-name heuristic hits Gemini omitted
-                # (restores coverage toward the larger accurate set users saw before).
                 seen = {(c.get("url") or "").split("?")[0] for c in cleaned}
                 for h in _heuristic_extract(name, raw_mentions):
                     key = (h.get("url") or "").split("?")[0]
@@ -487,8 +784,9 @@ def extract_sightings_with_gemini(
                         )
                         text = getattr(response, "text", "") or ""
                         mentions = _extract_json_array(text)
-                        cleaned = [_normalize_mention(m) for m in mentions]
+                        cleaned = [_normalize_mention(m, name) for m in mentions]
                         cleaned = [m for m in cleaned if _mentions_person(name, m)]
+                        cleaned = _enrich_mentions_from_raw(cleaned, raw_mentions)
                         if cleaned:
                             return cleaned, "gemini"
                     except Exception as exc2:  # noqa: BLE001
@@ -629,6 +927,7 @@ def build_summary(
         "name": name,
         "photo_data_url": photo_data_url,  # session-only; never written to disk
         "total_mentions": len(sightings),
+        "total_claims": sum(1 for s in sightings if is_sighting_claim(s, name)),
         "date_range": {
             "start": format_display_date(parsed[0]) if parsed else None,
             "end": format_display_date(parsed[-1]) if parsed else None,
@@ -641,6 +940,31 @@ def build_summary(
 def sort_sightings_chronologically(sightings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Sort by parsed date when possible; undated items go last. Normalize date display."""
 
+    def _time_key(raw: str) -> tuple:
+        s = (raw or "").strip().lower()
+        if not s:
+            return (1, 0)
+        # crude hour hints for ordering within a day
+        m = re.search(r"\b(\d{1,2})\s*(:(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b", s)
+        if m:
+            hour = int(m.group(1))
+            mins = int(m.group(3) or 0)
+            ap = m.group(4)[0]
+            if ap == "p" and hour < 12:
+                hour += 12
+            if ap == "a" and hour == 12:
+                hour = 0
+            return (0, hour * 60 + mins)
+        if "morning" in s:
+            return (0, 9 * 60)
+        if "noon" in s or "afternoon" in s:
+            return (0, 14 * 60)
+        if "evening" in s:
+            return (0, 18 * 60)
+        if "night" in s:
+            return (0, 21 * 60)
+        return (1, 0)
+
     decorated = []
     for item in sightings:
         dt = parse_mention_date(item.get("date"))
@@ -649,7 +973,9 @@ def sort_sightings_chronologically(sightings: List[Dict[str, Any]]) -> List[Dict
             normalized["date"] = format_display_date(dt) or ""
         elif item.get("date"):
             normalized["date"] = _clean_date_text(item.get("date"))
-        decorated.append((0 if dt else 1, dt or datetime.max, normalized))
+        if not normalized.get("claim_summary"):
+            normalized["claim_summary"] = format_claim_line(normalized)
+        decorated.append((0 if dt else 1, dt or datetime.max, _time_key(normalized.get("time") or ""), normalized))
 
-    decorated.sort(key=lambda x: (x[0], x[1]))
-    return [x[2] for x in decorated]
+    decorated.sort(key=lambda x: (x[0], x[1], x[2]))
+    return [x[3] for x in decorated]

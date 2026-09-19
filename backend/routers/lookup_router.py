@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from services.gemini_processor import (
     build_summary,
     extract_sightings_with_gemini,
+    extract_sighting_claims,
     geocode_mentions,
     sort_sightings_chronologically,
 )
@@ -167,7 +168,7 @@ def _normalize_name(name: str) -> str:
 
 
 # Bump when heatmap/geocode/extractor logic changes so stale in-memory reports are rebuilt
-_CACHE_VERSION = 4
+_CACHE_VERSION = 6
 
 
 def _cache_key(name: str) -> str:
@@ -254,6 +255,7 @@ async def _build_report(full_name: str, photo_data_url: Optional[str]) -> Dict[s
         raw_mentions,
     )
     sightings = sort_sightings_chronologically(sightings)
+    claims = extract_sighting_claims(sightings, full_name)
     locations = await geocode_mentions(sightings, raw_mentions)
 
     # Always merge matching case tip coords so Lookup heatmap aligns with Cases
@@ -283,13 +285,17 @@ async def _build_report(full_name: str, photo_data_url: Optional[str]) -> Dict[s
         "report_id": report_id,
         "summary": summary,
         "sightings": sightings,
+        "claims": claims,
         "locations": locations,
         "extraction_engine": extraction_engine,
         "raw_count": scraped.get("raw_count") or len(raw_mentions),
         "raw_mentions": [
             {
                 "source": m.get("source"),
+                "username": m.get("username"),
+                "kind": m.get("kind"),
                 "date": m.get("date"),
+                "time": m.get("time"),
                 "title": m.get("title"),
                 "snippet": m.get("snippet") or m.get("text"),
                 "url": m.get("url"),

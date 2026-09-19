@@ -41,7 +41,7 @@ hophacks/
 | Cases | Create / list profiles, tip submission, flyer PDF |
 | Maps | Leaflet tip path map + density heatmap (Esri basemap) |
 | Search | Gemini natural-language case filters |
-| Lookup | Public-web scrape → Gemini extract → geocode → PDF brief |
+| Lookup | Public-web + Apify scrape → Gemini extract → **chronological sighting claims** → geocode → PDF |
 | Intelligence | Case summary, credibility scoring, face-match assist |
 | Advanced | Live tips, city dashboard, alerts, coordinators, social kit, TTS |
 

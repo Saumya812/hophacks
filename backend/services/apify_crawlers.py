@@ -38,6 +38,36 @@ def apify_enabled() -> bool:
     return _configured(get_settings().apify_token)
 
 
+def _author_from(item: Dict[str, Any]) -> str:
+    """Best-effort username / display name from heterogeneous actor payloads."""
+    for key in (
+        "username",
+        "userName",
+        "author",
+        "ownerUsername",
+        "handle",
+        "pageName",
+        "user",
+    ):
+        val = item.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip().lstrip("@")[:80]
+        if isinstance(val, dict):
+            for nested in ("username", "name", "handle", "id"):
+                n = val.get(nested)
+                if isinstance(n, str) and n.strip():
+                    return n.strip().lstrip("@")[:80]
+    owner = item.get("owner")
+    if isinstance(owner, dict):
+        for nested in ("username", "full_name", "name"):
+            n = owner.get(nested)
+            if isinstance(n, str) and n.strip():
+                return n.strip().lstrip("@")[:80]
+    if isinstance(owner, str) and owner.strip():
+        return owner.strip().lstrip("@")[:80]
+    return ""
+
+
 def _normalize(
     *,
     source: str,
@@ -45,6 +75,9 @@ def _normalize(
     snippet: str = "",
     url: str = "",
     date: str = "",
+    username: str = "",
+    kind: str = "post",
+    time: str = "",
 ) -> Dict[str, Any]:
     text = " ".join(part for part in [title, snippet] if part).strip()
     return {
@@ -53,7 +86,10 @@ def _normalize(
         "snippet": (snippet or text)[:1000],
         "text": text[:2000],
         "url": url or "",
-        "date": (date or "")[:10],
+        "date": (date or "")[:40],
+        "username": (username or "").lstrip("@")[:80],
+        "kind": (kind or "post")[:40],
+        "time": (time or "")[:40],
     }
 
 
@@ -171,6 +207,8 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
                     snippet=body,
                     url=url,
                     date=_date_from(item.get("createdAt") or item.get("created_utc")),
+                    username=_author_from(item),
+                    kind="comment",
                 )
             )
             continue
@@ -180,6 +218,7 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
         url = item.get("url") or item.get("permalink") or ""
         if url and url.startswith("/"):
             url = f"https://www.reddit.com{url}"
+        post_author = _author_from(item)
         out.append(
             _normalize(
                 source="reddit",
@@ -187,6 +226,8 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
                 snippet=text,
                 url=url,
                 date=_date_from(item.get("createdAt") or item.get("created_utc")),
+                username=post_author,
+                kind="post",
             )
         )
 
@@ -203,6 +244,8 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
                     snippet=body,
                     url=url,
                     date=_date_from(c.get("createdAt") or c.get("created_utc")),
+                    username=_author_from(c),
+                    kind="comment",
                 )
             )
 
@@ -248,24 +291,7 @@ async def crawl_instagram(client: httpx.AsyncClient, full_name: str) -> List[Dic
             or item.get("displayUrl")
             or ""
         )
-        owner = ""
-        if isinstance(item.get("ownerUsername"), str):
-            owner = item["ownerUsername"]
-        elif isinstance(item.get("owner"), dict):
-            owner = item["owner"].get("username") or ""
-
-        # Include top-level comments if the actor already returned them
-        comments = item.get("latestComments") or item.get("comments") or []
-        comment_bits = []
-        for c in comments[:5]:
-            if isinstance(c, dict):
-                t = c.get("text") or c.get("comment") or ""
-                if t:
-                    comment_bits.append(t)
-            elif isinstance(c, str) and c.strip():
-                comment_bits.append(c)
-        if comment_bits:
-            caption = (caption + " | Comments: " + " · ".join(comment_bits)).strip(" |")
+        owner = _author_from(item)
 
         title = f"@{owner}" if owner else "Instagram post"
         out.append(
@@ -275,8 +301,39 @@ async def crawl_instagram(client: httpx.AsyncClient, full_name: str) -> List[Dic
                 snippet=caption,
                 url=url,
                 date=_date_from(item.get("timestamp") or item.get("takenAt") or item.get("date")),
+                username=owner,
+                kind="post",
             )
         )
+
+        # Each comment is its own mention (for sighting-claim extraction)
+        comments = item.get("latestComments") or item.get("comments") or []
+        for c in comments[:12]:
+            if isinstance(c, dict):
+                t = c.get("text") or c.get("comment") or ""
+                c_user = _author_from(c) or (c.get("ownerUsername") or "")
+                c_date = _date_from(
+                    c.get("timestamp") or c.get("createdAt") or c.get("date")
+                )
+            elif isinstance(c, str):
+                t, c_user, c_date = c, "", ""
+            else:
+                continue
+            if not str(t).strip():
+                continue
+            out.append(
+                _normalize(
+                    source="instagram",
+                    title=f"Comment on {title}",
+                    snippet=str(t),
+                    url=url,
+                    date=c_date or _date_from(
+                        item.get("timestamp") or item.get("takenAt") or item.get("date")
+                    ),
+                    username=str(c_user).lstrip("@"),
+                    kind="comment",
+                )
+            )
 
     return out
 
@@ -310,10 +367,10 @@ async def crawl_facebook(client: httpx.AsyncClient, full_name: str) -> List[Dict
             or item.get("content")
             or ""
         )
+        author = _author_from(item)
         title = (
-            item.get("pageName")
-            or item.get("userName")
-            or item.get("author")
+            author
+            or item.get("pageName")
             or item.get("title")
             or "Facebook post"
         )
@@ -336,8 +393,29 @@ async def crawl_facebook(client: httpx.AsyncClient, full_name: str) -> List[Dict
                     or item.get("date")
                     or item.get("publishedAt")
                 ),
+                username=author,
+                kind="post",
             )
         )
+        for c in item.get("comments") or item.get("latestComments") or []:
+            if not isinstance(c, dict):
+                continue
+            body = c.get("text") or c.get("message") or c.get("comment") or ""
+            if not str(body).strip():
+                continue
+            out.append(
+                _normalize(
+                    source="facebook",
+                    title=f"Comment on {title}",
+                    snippet=str(body),
+                    url=url,
+                    date=_date_from(
+                        c.get("time") or c.get("timestamp") or c.get("date")
+                    ),
+                    username=_author_from(c),
+                    kind="comment",
+                )
+            )
     return out
 
 
