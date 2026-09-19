@@ -38,7 +38,9 @@ export default function FlyerButton({ person }) {
         color: { dark: '#1a2b4a', light: '#ffffff' },
       })
 
-      const photoDataUrl = await loadImageAsDataUrl(person.photo_url)
+      const photoDataUrl = person.photo_url?.startsWith('data:')
+        ? person.photo_url
+        : await loadImageAsDataUrl(person.photo_url)
 
       const doc = new jsPDF({ unit: 'pt', format: 'letter' })
       const pageW = doc.internal.pageSize.getWidth()

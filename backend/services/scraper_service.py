@@ -25,6 +25,7 @@ import httpx
 
 from config import get_settings
 from services.apify_crawlers import apify_enabled, collect_apify_mentions
+from services.gemini_processor import filter_raw_mentions_for_person, mention_matches_person
 
 logger = logging.getLogger(__name__)
 
@@ -172,12 +173,11 @@ def _guess_platform(url: str, default: str = "web") -> str:
 
 
 async def search_google_queries(client: httpx.AsyncClient, full_name: str) -> List[Dict[str, Any]]:
-    """SerpAPI / web search for missing / seen / last-seen + social site: operators."""
+    """SerpAPI / web search — quoted full name only (no bare 'seen' keyword noise)."""
     queries = [
         f'"{full_name}" missing',
         f'"{full_name}" "missing person"',
-        f'"{full_name}" seen sighting',
-        f'"{full_name}" last seen',
+        f'"{full_name}" "last seen"',
         f'"{full_name}"',
         f'site:instagram.com "{full_name}"',
         f'site:facebook.com "{full_name}"',
@@ -344,12 +344,17 @@ async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict
     """
     YouTube mentions via (in order):
       1. YouTube Data API v3 (if YOUTUBE_API_KEY set)
-      2. SerpAPI YouTube engine (if SERPAPI_KEY set) — more reliable than Google site:
-      3. Google site:youtube.com / site:youtu.be SerpAPI fallback
+      2. SerpAPI YouTube engine (if SERPAPI_KEY set)
+      3. Google site:youtube.com SerpAPI fallback
+
+    Every result is name-filtered — bare 'missing person' shorts must not leak in.
     """
     settings = get_settings()
     name = " ".join(full_name.split())
     results: List[Dict[str, Any]] = []
+
+    def _keep(item: Dict[str, Any]) -> bool:
+        return mention_matches_person(name, item)
 
     # --- 1) Official YouTube Data API ---
     if _configured(settings.youtube_api_key):
@@ -358,7 +363,7 @@ async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict
                 "https://www.googleapis.com/youtube/v3/search",
                 params={
                     "part": "snippet",
-                    "q": name,
+                    "q": f'"{name}"',
                     "type": "video",
                     "maxResults": 15,
                     "key": settings.youtube_api_key,
@@ -372,15 +377,15 @@ async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict
                     vid = (item.get("id") or {}).get("videoId") or ""
                     if vid:
                         video_ids.append(vid)
-                    results.append(
-                        _normalize_result(
-                            source="youtube",
-                            title=sn.get("title") or "",
-                            snippet=sn.get("description") or "",
-                            url=f"https://www.youtube.com/watch?v={vid}" if vid else "",
-                            date=(sn.get("publishedAt") or "")[:10],
-                        )
+                    row = _normalize_result(
+                        source="youtube",
+                        title=sn.get("title") or "",
+                        snippet=sn.get("description") or "",
+                        url=f"https://www.youtube.com/watch?v={vid}" if vid else "",
+                        date=(sn.get("publishedAt") or "")[:10],
                     )
+                    if _keep(row):
+                        results.append(row)
 
                 async def _comments(video_id: str) -> List[Dict[str, Any]]:
                     try:
@@ -405,15 +410,15 @@ async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict
                                 )
                                 or {}
                             )
-                            out.append(
-                                _normalize_result(
-                                    source="youtube",
-                                    title="Comment",
-                                    snippet=top.get("textDisplay") or "",
-                                    url=f"https://www.youtube.com/watch?v={video_id}",
-                                    date=(top.get("publishedAt") or "")[:10],
-                                )
+                            row = _normalize_result(
+                                source="youtube",
+                                title="Comment",
+                                snippet=top.get("textDisplay") or "",
+                                url=f"https://www.youtube.com/watch?v={video_id}",
+                                date=(top.get("publishedAt") or "")[:10],
                             )
+                            if _keep(row):
+                                out.append(row)
                         return out
                     except Exception:  # noqa: BLE001
                         return []
@@ -426,7 +431,7 @@ async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict
                     if isinstance(batch, list):
                         results.extend(batch)
                 if results:
-                    return results
+                    return results[:25]
             else:
                 logger.warning("YouTube Data API status %s: %s", resp.status_code, resp.text[:200])
         except Exception as exc:  # noqa: BLE001
@@ -434,7 +439,7 @@ async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict
 
     # --- 2) SerpAPI native YouTube engine ---
     if _configured(settings.serpapi_key):
-        queries = [name, f"{name} missing", f'"{name}"', f"{name} last seen"]
+        queries = [f'"{name}"', f'"{name}" missing', f'"{name}" "last seen"']
         for q in queries:
             try:
                 resp = await client.get(
@@ -452,36 +457,34 @@ async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict
                     if not link:
                         vid = item.get("video_id") or ""
                         link = f"https://www.youtube.com/watch?v={vid}" if vid else ""
-                    results.append(
-                        _normalize_result(
-                            source="youtube",
-                            title=item.get("title") or "",
-                            snippet=item.get("description") or "",
-                            url=link,
-                            date=item.get("published_date") or "",
-                        )
+                    row = _normalize_result(
+                        source="youtube",
+                        title=item.get("title") or "",
+                        snippet=item.get("description") or "",
+                        url=link,
+                        date=item.get("published_date") or "",
                     )
-                # Shorts often carry missing-person appeals
+                    if _keep(row):
+                        results.append(row)
                 for block in data.get("shorts_results") or []:
                     for short in block.get("shorts") or []:
                         link = short.get("link") or ""
                         vid = short.get("video_id") or ""
                         if not link and vid:
                             link = f"https://www.youtube.com/shorts/{vid}"
-                        results.append(
-                            _normalize_result(
-                                source="youtube",
-                                title=short.get("title") or "YouTube Short",
-                                snippet="",
-                                url=link,
-                                date="",
-                            )
+                        row = _normalize_result(
+                            source="youtube",
+                            title=short.get("title") or "YouTube Short",
+                            snippet="",
+                            url=link,
+                            date="",
                         )
+                        if _keep(row):
+                            results.append(row)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("SerpAPI YouTube engine failed for %r: %s", q, exc)
 
         if results:
-            # Light dedupe within this source
             seen = set()
             uniq = []
             for item in results:
@@ -493,17 +496,18 @@ async def search_youtube(client: httpx.AsyncClient, full_name: str) -> List[Dict
                 uniq.append(item)
             return uniq[:25]
 
-    # --- 3) Google site: fallback (often empty now, but cheap to try) ---
+    # --- 3) Google site: fallback ---
     for q in (
         f'site:youtube.com "{name}"',
         f'site:youtu.be "{name}"',
-        f'site:youtube.com {name} missing',
+        f'site:youtube.com "{name}" missing',
     ):
         batch = await _serp_search(client, q, num=15)
         for item in batch:
             item = dict(item)
             item["source"] = "youtube"
-            results.append(item)
+            if _keep(item):
+                results.append(item)
         if results:
             break
 
@@ -566,7 +570,7 @@ async def collect_raw_mentions(full_name: str) -> Dict[str, Any]:
     settings = get_settings()
     use_apify = apify_enabled()
 
-    timeout = httpx.Timeout(30.0, connect=10.0)
+    timeout = httpx.Timeout(20.0, connect=8.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         tasks = [
             search_google_queries(client, name),
@@ -575,17 +579,15 @@ async def collect_raw_mentions(full_name: str) -> Dict[str, Any]:
             search_youtube(client, name),
             search_reddit(client, name),
         ]
-
-        base = await asyncio.gather(*tasks, return_exceptions=True)
+        apify_coro = collect_apify_mentions(name) if use_apify else None
+        if apify_coro is not None:
+            gathered = await asyncio.gather(*tasks, apify_coro, return_exceptions=True)
+            base, apify_bundle = gathered[:-1], gathered[-1]
+        else:
+            base = await asyncio.gather(*tasks, return_exceptions=True)
+            apify_bundle = {"raw_mentions": [], "sources_status": {}}
 
     google, news, twitter, youtube, reddit_public = base
-
-    apify_bundle: Any = {"raw_mentions": [], "sources_status": {}}
-    if use_apify:
-        try:
-            apify_bundle = await collect_apify_mentions(name)
-        except Exception as exc:  # noqa: BLE001
-            apify_bundle = {"raw_mentions": [], "sources_status": {"apify": f"error: {exc}"}}
 
     raw: List[Dict[str, Any]] = []
 
@@ -609,14 +611,18 @@ async def collect_raw_mentions(full_name: str) -> Dict[str, Any]:
     _absorb("reddit_public", reddit_public)
 
     if use_apify:
-        sources_status.update(apify_bundle.get("sources_status") or {})
-        raw.extend(apify_bundle.get("raw_mentions") or [])
+        if isinstance(apify_bundle, Exception):
+            sources_status["apify"] = f"error: {apify_bundle}"
+        else:
+            sources_status.update((apify_bundle or {}).get("sources_status") or {})
+            raw.extend((apify_bundle or {}).get("raw_mentions") or [])
     else:
         sources_status.setdefault("apify_reddit", "skipped (APIFY_TOKEN not configured)")
         sources_status.setdefault("apify_instagram", "skipped (APIFY_TOKEN not configured)")
         sources_status.setdefault("apify_facebook", "skipped (APIFY_TOKEN not configured)")
 
     raw = _dedupe_raw(raw)
+    raw = filter_raw_mentions_for_person(name, raw)
     return {
         "full_name": name,
         "raw_mentions": raw,

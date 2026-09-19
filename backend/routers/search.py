@@ -13,6 +13,7 @@ from schemas import (
     NaturalSearchResponse,
     PersonOut,
 )
+from routers.persons import _row_to_person, _strip_list_photo
 from services.gemini import query_to_filters
 
 router = APIRouter(tags=["search"])
@@ -74,7 +75,7 @@ def natural_search(payload: NaturalSearchRequest) -> NaturalSearchResponse:
     query = query.order("created_at", desc=True)
     result = query.execute()
     rows = result.data or []
-    persons = [PersonOut(**row) for row in rows]
+    persons = [_row_to_person(_strip_list_photo(row)) for row in rows]
 
     return NaturalSearchResponse(
         query=payload.query,

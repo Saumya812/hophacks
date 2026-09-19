@@ -6,18 +6,21 @@ GET  /lookup/report/{report_id}
 GET  /lookup/report/{report_id}/pdf
 
 Includes:
-- In-memory report cache (1 hour, keyed by normalized name)
-- IP rate limit: 5 searches / hour
-- Photos kept only in the ephemeral cache (never written to disk)
+- In-memory + local-disk report cache (1 hour, keyed by normalized name)
+- IP rate limit: 20 searches / hour
+- Photos kept only in RAM (never written to disk)
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import re
 import time
 import uuid
 from collections import defaultdict, deque
+from pathlib import Path
 from typing import Any, Deque, Dict, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -25,6 +28,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from services.gemini_processor import (
+    _heuristic_extract,
     build_summary,
     extract_sightings_with_gemini,
     extract_sighting_claims,
@@ -162,13 +166,64 @@ _id_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 # ip -> deque of request timestamps
 _rate_hits: Dict[str, Deque[float]] = defaultdict(deque)
 
+_CACHE_DIR = Path(__file__).resolve().parent.parent / ".lookup_cache"
+_log = logging.getLogger(__name__)
+
+
+def _report_without_photos(report: Dict[str, Any]) -> Dict[str, Any]:
+    cloned = json.loads(json.dumps(report, default=str))
+    summary = cloned.get("summary")
+    if isinstance(summary, dict):
+        summary.pop("photo_data_url", None)
+    return cloned
+
+
+def _hydrate_disk_cache() -> None:
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        for path in _CACHE_DIR.glob("*.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                exp = float(data.get("expires_at") or 0)
+                key = data.get("name_key")
+                report = data.get("report")
+                if not key or not isinstance(report, dict) or exp <= now:
+                    path.unlink(missing_ok=True)
+                    continue
+                _name_cache[key] = (exp, report)
+                rid = report.get("report_id")
+                if rid:
+                    _id_cache[str(rid)] = (exp, report)
+            except Exception:
+                continue
+    except Exception as exc:  # noqa: BLE001
+        _log.info("Lookup disk cache unavailable: %s", exc)
+
+
+def _persist_disk_cache(name_key: str, expires: float, report: Dict[str, Any]) -> None:
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r"[^a-z0-9]+", "_", name_key)[:80] or "report"
+        payload = {
+            "name_key": name_key,
+            "expires_at": expires,
+            "report": _report_without_photos(report),
+        }
+        (_CACHE_DIR / f"{safe}.json").write_text(json.dumps(payload), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        _log.info("Lookup disk cache write skipped: %s", exc)
+
+
+_hydrate_disk_cache()
+
 
 def _normalize_name(name: str) -> str:
     return re.sub(r"\s+", " ", (name or "").strip().lower())
 
 
 # Bump when heatmap/geocode/extractor logic changes so stale in-memory reports are rebuilt
-_CACHE_VERSION = 6
+_CACHE_VERSION = 8
 
 
 def _cache_key(name: str) -> str:
@@ -184,9 +239,12 @@ def _purge_expired() -> None:
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    from config import get_settings
+
+    if get_settings().trust_proxy:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
     if request.client:
         return request.client.host or "unknown"
     return "unknown"
@@ -248,15 +306,22 @@ async def _build_report(full_name: str, photo_data_url: Optional[str]) -> Dict[s
     scraped = await collect_raw_mentions(full_name)
     raw_mentions = scraped.get("raw_mentions") or []
 
-    # Gemini call is sync (google-generativeai) — run in a thread
-    sightings, extraction_engine = await asyncio.to_thread(
-        extract_sightings_with_gemini,
-        full_name,
-        raw_mentions,
-    )
+    # Gemini call is sync — cap so a 429 storm cannot hang the Lookup spinner
+    try:
+        sightings, extraction_engine = await asyncio.wait_for(
+            asyncio.to_thread(
+                extract_sightings_with_gemini,
+                full_name,
+                raw_mentions,
+            ),
+            timeout=22.0,
+        )
+    except asyncio.TimeoutError:
+        sightings = _heuristic_extract(full_name, raw_mentions)
+        extraction_engine = "heuristic_fallback"
     sightings = sort_sightings_chronologically(sightings)
     claims = extract_sighting_claims(sightings, full_name)
-    locations = await geocode_mentions(sightings, raw_mentions)
+    locations = await geocode_mentions(sightings, raw_mentions, person_name=full_name)
 
     # Always merge matching case tip coords so Lookup heatmap aligns with Cases
     case_pts = await asyncio.to_thread(_locations_from_matching_case, full_name)
@@ -347,7 +412,13 @@ async def lookup_search(payload: LookupSearchRequest, request: Request) -> Dict[
     ip = _client_ip(request)
     _check_rate_limit(ip)
 
-    report = await _build_report(full_name, photo_data_url)
+    try:
+        report = await asyncio.wait_for(_build_report(full_name, photo_data_url), timeout=70.0)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail="Search took too long. Public sources or AI extraction stalled — try again.",
+        ) from None
     report["cached"] = False
 
     # Do not name-cache empty/sparse/heuristic reports — retry can improve later
@@ -364,6 +435,7 @@ async def lookup_search(payload: LookupSearchRequest, request: Request) -> Dict[
     expires = time.time() + CACHE_TTL_SECONDS
     _name_cache[name_key] = (expires, report)
     _id_cache[report["report_id"]] = (expires, report)
+    _persist_disk_cache(name_key, expires, report)
     return report
 
 

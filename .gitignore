@@ -18,6 +18,7 @@ venv/
 
 # Audio cache (ElevenLabs demo)
 backend/.audio_cache/
+backend/.lookup_cache/
 
 # Node / frontend
 frontend/node_modules/

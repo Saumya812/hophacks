@@ -157,4 +157,4 @@ def iter_model_fallbacks(primary: Optional[str] = None) -> List[str]:
             continue
         seen.add(cand)
         out.append(cand)
-    return out or [primary]
+    return out

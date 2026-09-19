@@ -75,10 +75,7 @@ export default function Home() {
         setPersons(data.persons || [])
         setFiltersUsed(data.filters || null)
       } else {
-        let data = await listPersons({ name: q, status: 'active' })
-        if (!data.count) {
-          data = await listPersons({ location: q, status: 'active' })
-        }
+        let data = await listPersons({ q, status: 'active' })
         setPersons(data.persons || [])
       }
     } catch (err) {

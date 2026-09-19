@@ -200,6 +200,7 @@ export default function PersonProfile() {
             <p className="text-[13px] font-medium text-accent">
               Last seen · {person.last_seen_location}
               {person.last_seen_date ? ` · ${person.last_seen_date}` : ''}
+              {person.last_seen_time ? ` · ${person.last_seen_time}` : ''}
             </p>
             <div className="flex flex-wrap gap-3 pt-1">
               <Link to={`/tip/${person.id}`} className="btn-gold">
@@ -215,7 +216,7 @@ export default function PersonProfile() {
       </section>
 
       {/* Tabs */}
-      <div className="sticky top-0 z-20 border-b border-border bg-cream/95 backdrop-blur">
+      <div className="sticky top-[57px] z-20 border-b border-border bg-cream/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 sm:px-6">
           {TABS.map((t) => (
             <button

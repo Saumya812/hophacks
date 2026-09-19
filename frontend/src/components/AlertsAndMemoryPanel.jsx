@@ -40,7 +40,7 @@ export default function AlertsAndMemoryPanel() {
           onClick={async () => {
             try {
               await createNLAlert({ email: nlEmail, query_text: nlQuery })
-              setMsg('NL alert saved — matching tips will log an email digest.')
+              setMsg('NL alert saved. Matching tips are logged (not emailed unless SMTP is set).')
             } catch (err) {
               setMsg(err.message)
             }
@@ -71,7 +71,7 @@ export default function AlertsAndMemoryPanel() {
           onClick={async () => {
             try {
               await createZipAlert({ email: zipEmail, zip_code: zip })
-              setMsg('Zip alert saved.')
+              setMsg('Zip alert saved. New nearby cases are logged to the server outbox.')
             } catch (err) {
               setMsg(err.message)
             }

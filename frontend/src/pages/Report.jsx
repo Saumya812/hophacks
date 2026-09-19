@@ -111,9 +111,11 @@ export default function Report() {
       gender: form.gender.trim() || null,
       last_seen_location: form.last_seen_location.trim(),
       last_seen_date: form.last_seen_date,
+      last_seen_time: form.last_seen_time.trim() || null,
       description: form.description.trim(),
       photo_url: form.photo_url.trim() || null,
       police_report_number: form.police_report_number.trim() || null,
+      contact_email: form.contact_email.trim() || null,
       status: 'active',
     }
     const created = await createPerson(payload)
@@ -259,7 +261,7 @@ export default function Report() {
                       value={form.last_seen_time}
                       onChange={(e) => update('last_seen_time', e.target.value)}
                     />
-                    <p className="helper-text">Optional — not stored separately yet</p>
+                    <p className="helper-text">Optional approximate time</p>
                   </div>
                 </div>
               </div>
@@ -380,7 +382,8 @@ export default function Report() {
                     onChange={(e) => update('contact_email', e.target.value)}
                   />
                   <p className="helper-text">
-                    Optional — use Family Tools → Watch on the profile for email alerts today
+                    Optional. We save it as the case watcher for updates (logged on the server; not
+                    shown on the public profile).
                   </p>
                 </div>
                 <div>
@@ -394,7 +397,7 @@ export default function Report() {
                     onChange={(e) => update('police_report_number', e.target.value)}
                   />
                   <p className="helper-text">
-                    Adding a report number adds a Verified badge to this profile
+                    If you add a report number, this profile is marked Verified when it is published.
                   </p>
                 </div>
               </div>

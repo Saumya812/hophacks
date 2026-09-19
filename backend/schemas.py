@@ -40,11 +40,13 @@ class PersonCreate(BaseModel):
     )
     photo_url: Optional[str] = Field(
         None,
-        max_length=8_000_000,
-        description="HTTP(S) URL or data:image… URL for the case photo",
+        max_length=1_800_000,
+        description="HTTP(S) URL or data:image… URL for the case photo (max ~1.3MB)",
     )
     status: PersonStatus = "active"
     police_report_number: Optional[str] = Field(None, max_length=100)
+    contact_email: Optional[EmailStr] = None
+    last_seen_time: Optional[str] = Field(None, max_length=20)
 
 
 class PersonOut(BaseModel):
@@ -72,6 +74,10 @@ class PersonOut(BaseModel):
     tips_count: Optional[int] = None
     suspicious_flags: Optional[int] = None
     under_review: Optional[bool] = None
+    contact_email: Optional[str] = None
+    last_seen_time: Optional[str] = None
+    # Only returned on POST /persons — never on public list/get
+    owner_token: Optional[str] = None
 
 
 class PersonListResponse(BaseModel):
@@ -111,7 +117,6 @@ class SightingOut(BaseModel):
     date_time: datetime
     description: str
     confidence_level: int
-    submitter_email: Optional[str] = None
     created_at: datetime
     # Optional intelligence fields (migration 002) — separate from confidence_level
     credibility_score: Optional[int] = Field(None, ge=1, le=10)

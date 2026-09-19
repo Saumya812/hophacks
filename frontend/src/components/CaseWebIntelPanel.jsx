@@ -7,14 +7,13 @@ import { lookupSearch } from '../api.js'
 import ReportCard from './ReportCard.jsx'
 
 const STATUS_MESSAGES = [
-  'Searching Instagram...',
-  'Scanning Facebook...',
-  'Reading Reddit threads...',
-  'Checking news & public web...',
+  'Searching public web and news...',
+  'Checking discussion threads...',
+  'Looking for social mentions when crawlers are configured...',
   'Compiling intelligence report...',
 ]
 
-const cacheKey = (personId) => `fmp-case-webintel:${personId}`
+const cacheKey = (personId) => `fmp-case-webintel:v9:${personId}`
 
 export default function CaseWebIntelPanel({ person, autoStart = false }) {
   const [report, setReport] = useState(null)
@@ -75,7 +74,7 @@ export default function CaseWebIntelPanel({ person, autoStart = false }) {
           name: person.name,
           photo: photo || undefined,
         },
-        { timeoutMs: 150_000 },
+        { timeoutMs: 80_000 },
       )
       if (runId !== runIdRef.current) return
       setReport(data)
