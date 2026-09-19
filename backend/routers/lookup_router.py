@@ -174,22 +174,33 @@ async def lookup_search(payload: LookupSearchRequest, request: Request) -> Dict[
     name_key = _normalize_name(full_name)
     photo_data_url = _normalize_photo(payload.photo)
 
-    # Cache hit by name (photo from this request still attached for display)
+    # Cache hit by name — only reuse if we previously extracted structured mentions
     cached = _name_cache.get(name_key)
-    if cached and cached[0] > time.time():
+    if cached and cached[0] > time.time() and (cached[1].get("sightings") or []):
         report = dict(cached[1])
-        # Refresh photo for this session view without re-scraping
         if photo_data_url and report.get("summary"):
-            report = {**report, "summary": {**report["summary"], "photo_data_url": photo_data_url}}
+            report = {
+                **report,
+                "summary": {**report["summary"], "photo_data_url": photo_data_url},
+            }
             _id_cache[report["report_id"]] = (cached[0], report)
         report["cached"] = True
         return report
 
     report = await _build_report(full_name, photo_data_url)
+    report["cached"] = False
+
+    # Do not cache empty/sparse reports — lets improved extractors retry
+    if report.get("empty") or (
+        not (report.get("sightings") or []) and (report.get("raw_mentions") or [])
+    ):
+        # Still keep by id briefly so PDF works for this session
+        _id_cache[report["report_id"]] = (time.time() + CACHE_TTL_SECONDS, report)
+        return report
+
     expires = time.time() + CACHE_TTL_SECONDS
     _name_cache[name_key] = (expires, report)
     _id_cache[report["report_id"]] = (expires, report)
-    report["cached"] = False
     return report
 
 

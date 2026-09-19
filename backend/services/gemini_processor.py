@@ -27,22 +27,29 @@ SYSTEM_PROMPT_TEMPLATE = """
 You are analyzing public mentions of a missing person named {name}.
 Below are raw text snippets from various public sources.
 
-Extract ONLY mentions that contain at least one of:
+Prefer mentions that contain at least one of:
 - A location (city, neighborhood, street, landmark)
 - A time or date reference
-- A physical description matching the person
+- A physical description
+- A sighting / "last seen" / "missing" news context
+
+Also include public social/profile pages that clearly belong to this name
+(Facebook, Instagram, LinkedIn, etc.) even if they lack a location.
+Mark those confidence as "low" and put location as "" unless stated.
 
 For each valid mention return JSON:
 {{
   "source": "platform name",
   "date": "date if mentioned",
   "location": "location if mentioned",
-  "quote": "exact relevant quote under 100 words",
+  "quote": "exact relevant quote under 100 words (or page title if that is all you have)",
   "confidence": "high/medium/low",
-  "url": "source url"
+  "url": "source url",
+  "kind": "sighting|news|profile|other"
 }}
 
-Ignore irrelevant mentions, spam, and unrelated people with the same name.
+Ignore spam and clearly unrelated people with the same name when possible.
+If the only hits are profile pages, still return them as low-confidence profile mentions.
 Return only a JSON array. Nothing else.
 """.strip()
 
@@ -65,9 +72,10 @@ def _extract_json_array(text: str) -> List[Dict[str, Any]]:
 
 def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Fallback extractor when Gemini is unavailable.
+    Fallback / sparse-result extractor.
 
-    Keeps snippets that mention the name plus location/time-ish language.
+    Keeps location/time hits plus social/profile pages that match the name,
+    so a Facebook-only Google hit is not dropped entirely.
     """
     location_words = re.compile(
         r"\b(in|near|around|at|from)\s+[A-Z][A-Za-z0-9 .'-]{2,40}",
@@ -76,32 +84,70 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
         r"\b(yesterday|today|last\s+night|last\s+week|monday|tuesday|wednesday|"
         r"thursday|friday|saturday|sunday|january|february|march|april|may|june|"
         r"july|august|september|october|november|december|\d{1,2}/\d{1,2}/\d{2,4}|"
-        r"20\d{2})\b",
+        r"20\d{2}|missing|last\s+seen|sighting)\b",
         re.I,
     )
+    social_sources = {
+        "instagram",
+        "facebook",
+        "tiktok",
+        "x",
+        "twitter",
+        "reddit",
+        "youtube",
+        "news",
+        "web",
+        "google",
+    }
     name_l = name.lower()
+    name_tokens = [t for t in re.split(r"\s+", name_l) if len(t) > 1]
     out: List[Dict[str, Any]] = []
+
     for item in raw_mentions:
+        title = item.get("title") or ""
         text = item.get("text") or item.get("snippet") or ""
-        if name_l not in text.lower() and name_l not in (item.get("title") or "").lower():
-            # Still keep if title/snippet is short search-result style
-            if name.split()[0].lower() not in text.lower():
-                continue
-        has_loc = bool(location_words.search(text)) or bool(item.get("date"))
-        has_time = bool(time_words.search(text)) or bool(item.get("date"))
-        if not (has_loc or has_time):
-            # Keep a few high-signal social/news hits anyway
-            if item.get("source") not in {"news", "reddit", "x", "youtube"}:
-                continue
-        loc_match = location_words.search(text)
+        blob = f"{title} {text}".lower()
+        url = (item.get("url") or "").lower()
+        source = (item.get("source") or "web").lower()
+
+        name_hit = name_l in blob or all(t in blob for t in name_tokens[:2])
+        if not name_hit and name_tokens:
+            # Allow partial: first + last token present across title/url
+            name_hit = name_tokens[0] in blob and (
+                len(name_tokens) == 1 or name_tokens[-1] in blob or name_tokens[-1] in url
+            )
+        if not name_hit:
+            continue
+
+        has_loc = bool(location_words.search(f"{title} {text}"))
+        has_time = bool(time_words.search(f"{title} {text}")) or bool(item.get("date"))
+        is_profile = source in social_sources or any(
+            s in url for s in ("facebook.com", "instagram.com", "tiktok.com", "x.com", "twitter.com")
+        )
+
+        if not (has_loc or has_time or is_profile):
+            continue
+
+        loc_match = location_words.search(f"{title} {text}")
+        if has_loc and has_time:
+            confidence = "medium"
+            kind = "sighting"
+        elif has_loc or has_time or "missing" in blob or "last seen" in blob:
+            confidence = "low"
+            kind = "news" if "missing" in blob or "last seen" in blob else "other"
+        else:
+            confidence = "low"
+            kind = "profile"
+
         out.append(
             {
                 "source": item.get("source") or "web",
                 "date": item.get("date") or "",
                 "location": loc_match.group(0)[3:].strip() if loc_match else "",
-                "quote": (text or item.get("title") or "")[:400],
-                "confidence": "medium" if (has_loc and has_time) else "low",
+                "quote": (text or title or "Public page mentioning this name")[:400],
+                "confidence": confidence,
                 "url": item.get("url") or "",
+                "kind": kind,
             }
         )
         if len(out) >= 40:
@@ -164,8 +210,13 @@ def extract_sightings_with_gemini(name: str, raw_mentions: List[Dict[str, Any]])
                     "quote": str(m.get("quote") or "")[:500],
                     "confidence": conf,
                     "url": str(m.get("url") or "")[:500],
+                    "kind": str(m.get("kind") or "other")[:40],
                 }
             )
+        # If Gemini returned nothing but we have raw hits, keep social/profile pages
+        if not cleaned:
+            logger.info("Gemini returned 0 mentions — merging heuristic sparse extract")
+            return _heuristic_extract(name, raw_mentions)
         return cleaned
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gemini extraction failed (%s) — heuristic fallback", exc)

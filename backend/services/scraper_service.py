@@ -4,6 +4,11 @@ Smart Person Search — public-web scraper service.
 Runs SerpAPI / Reddit / NewsAPI / Twitter / YouTube (and Google site:
 operators for IG/FB/TikTok) in parallel via asyncio + httpx.
 
+When APIFY_TOKEN is set, also runs Apify crawlers for:
+  - Reddit posts + comments
+  - Instagram posts + comments
+  - Facebook public posts/pages
+
 Sources with missing API keys are skipped gracefully so the feature still
 works in demo mode with whatever keys are configured.
 """
@@ -19,6 +24,7 @@ from urllib.parse import urlparse
 import httpx
 
 from config import get_settings
+from services.apify_crawlers import apify_enabled, collect_apify_mentions
 
 logger = logging.getLogger(__name__)
 
@@ -163,11 +169,15 @@ async def search_google_queries(client: httpx.AsyncClient, full_name: str) -> Li
     """SerpAPI / web search for missing / seen / last-seen + social site: operators."""
     queries = [
         f'"{full_name}" missing',
+        f'"{full_name}" "missing person"',
         f'"{full_name}" seen sighting',
         f'"{full_name}" last seen',
+        f'"{full_name}"',
         f'site:instagram.com "{full_name}"',
         f'site:facebook.com "{full_name}"',
         f'site:tiktok.com "{full_name}"',
+        f'site:reddit.com "{full_name}"',
+        f'site:news.google.com "{full_name}" missing',
     ]
     batches = await asyncio.gather(
         *[_serp_search(client, q, num=20) for q in queries],
@@ -436,37 +446,72 @@ async def collect_raw_mentions(full_name: str) -> Dict[str, Any]:
     name = " ".join(full_name.split())
     sources_status: Dict[str, str] = {}
     settings = get_settings()
+    use_apify = apify_enabled()
 
     timeout = httpx.Timeout(30.0, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        google_t = asyncio.create_task(search_google_queries(client, name))
-        reddit_t = asyncio.create_task(search_reddit(client, name))
-        news_t = asyncio.create_task(search_newsapi(client, name))
-        twitter_t = asyncio.create_task(search_twitter(client, name))
-        youtube_t = asyncio.create_task(search_youtube(client, name))
+        tasks = [
+            search_google_queries(client, name),
+            search_newsapi(client, name),
+            search_twitter(client, name),
+            search_youtube(client, name),
+        ]
+        # Free Reddit JSON as backup; skipped in status labeling when Apify returns hits
+        if not use_apify:
+            tasks.append(search_reddit(client, name))
+        else:
+            tasks.append(asyncio.sleep(0))  # placeholder so gather arity stays simple
 
-        google, reddit, news, twitter, youtube = await asyncio.gather(
-            google_t, reddit_t, news_t, twitter_t, youtube_t,
-            return_exceptions=True,
-        )
+        base = await asyncio.gather(*tasks, return_exceptions=True)
+
+    google, news, twitter, youtube, reddit_or_none = base
+
+    apify_bundle: Any = {"raw_mentions": [], "sources_status": {}}
+    if use_apify:
+        try:
+            apify_bundle = await collect_apify_mentions(name)
+        except Exception as exc:  # noqa: BLE001
+            apify_bundle = {"raw_mentions": [], "sources_status": {"apify": f"error: {exc}"}}
 
     raw: List[Dict[str, Any]] = []
-    pairs = [
-        ("google_and_social_index", google, False, True),
-        ("reddit", reddit, False, True),
-        ("newsapi", news, True, _configured(settings.newsapi_key)),
-        ("twitter_x", twitter, False, True),
-        ("youtube", youtube, False, True),
-    ]
-    for label, value, needs_key, key_ok in pairs:
+
+    def _absorb(label: str, value: Any, *, needs_key: bool = False, key_ok: bool = True) -> None:
         if isinstance(value, Exception):
             sources_status[label] = f"error: {value}"
-            continue
+            return
         if needs_key and not key_ok and not value:
             sources_status[label] = "skipped (API key not configured)"
-            continue
+            return
+        if not isinstance(value, list):
+            sources_status[label] = "skipped"
+            return
         sources_status[label] = f"ok ({len(value)} hits)"
         raw.extend(value)
+
+    _absorb("google_and_social_index", google)
+    _absorb("newsapi", news, needs_key=True, key_ok=_configured(settings.newsapi_key))
+    _absorb("twitter_x", twitter)
+    _absorb("youtube", youtube)
+
+    if use_apify:
+        sources_status.update(apify_bundle.get("sources_status") or {})
+        raw.extend(apify_bundle.get("raw_mentions") or [])
+        apify_reddit_hits = sum(1 for m in raw if m.get("source") == "reddit")
+        if apify_reddit_hits == 0:
+            # Apify returned nothing for Reddit — use public JSON fallback
+            try:
+                async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+                    fallback = await search_reddit(client, name)
+                _absorb("reddit_public_fallback", fallback)
+            except Exception as exc:  # noqa: BLE001
+                sources_status["reddit_public_fallback"] = f"error: {exc}"
+        else:
+            sources_status["reddit_public"] = "skipped (using Apify Reddit crawler)"
+    else:
+        _absorb("reddit", reddit_or_none)
+        sources_status.setdefault("apify_reddit", "skipped (APIFY_TOKEN not configured)")
+        sources_status.setdefault("apify_instagram", "skipped (APIFY_TOKEN not configured)")
+        sources_status.setdefault("apify_facebook", "skipped (APIFY_TOKEN not configured)")
 
     raw = _dedupe_raw(raw)
     return {

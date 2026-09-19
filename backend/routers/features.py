@@ -125,11 +125,23 @@ def platform_mentions(person_id: UUID):
         .data
         or []
     )
-    counts = {"community_tips": len(rows), "reddit": 0, "news": 0, "x": 0, "other": 0}
+    counts = {
+        "community_tips": len(rows),
+        "reddit": 0,
+        "instagram": 0,
+        "facebook": 0,
+        "news": 0,
+        "x": 0,
+        "other": 0,
+    }
     for r in rows:
         t = (r.get("description") or "").lower()
         if "reddit" in t:
             counts["reddit"] += 1
+        elif "instagram" in t or "insta" in t:
+            counts["instagram"] += 1
+        elif "facebook" in t or "fb.com" in t:
+            counts["facebook"] += 1
         elif "news" in t or "article" in t:
             counts["news"] += 1
         elif "twitter" in t or " tweet" in t or " on x " in t:

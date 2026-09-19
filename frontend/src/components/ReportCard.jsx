@@ -79,6 +79,12 @@ export default function ReportCard({ report }) {
     : null
 
   const empty = report?.empty || (sightings.length === 0 && rawMentions.length === 0)
+  const sparse = !empty && sightings.length === 0 && rawMentions.length > 0
+
+  // Auto-expand raw mentions when filters found nothing useful
+  useEffect(() => {
+    if (sparse) setRawOpen(true)
+  }, [sparse])
 
   if (empty) {
     return (
@@ -103,6 +109,18 @@ export default function ReportCard({ report }) {
 
   return (
     <div className="space-y-8">
+      {sparse && (
+        <aside className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">Limited public index results</p>
+          <p className="mt-1">
+            Search found indexed pages, but little or no location/time sighting language.
+            Social/profile hits are listed as low-confidence mentions and under Raw mentions.
+            This is not proof of a sighting. Add NEWSAPI_KEY / SERPAPI_KEY for deeper coverage,
+            and always work with police on real cases.
+          </p>
+        </aside>
+      )}
+
       {/* SUMMARY */}
       <section className="surface-panel overflow-hidden">
         <div className="border-b border-navy/10 bg-navy px-5 py-3 text-white">

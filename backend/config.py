@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     rapidapi_key: str = ""
     twitter_rapidapi_host: str = "twitter-api45.p.rapidapi.com"
 
+    # Apify crawlers (Reddit / Instagram / Facebook) — optional
+    apify_token: str = ""
+    apify_reddit_actor: str = "scrapeforge~reddit-scraper"
+    apify_instagram_actor: str = "apify~instagram-scraper"
+    apify_facebook_actor: str = "scraper_one~facebook-posts-search"
+
     # Optional sponsor / advanced integrations
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"

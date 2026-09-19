@@ -27,6 +27,7 @@ hophacks/
 │   └── services/
 │       ├── gemini.py             # NL case search filters
 │       ├── scraper_service.py    # Parallel public-source scrapers
+│       ├── apify_crawlers.py     # Apify: Reddit / Instagram / Facebook
 │       ├── gemini_processor.py   # Sighting extraction + geocode
 │       └── lookup_pdf.py         # Lookup report PDF
 └── frontend/
@@ -112,7 +113,9 @@ uvicorn main:app --reload --port 8000
 | `GET` | `/lookup/report/{id}` | Cached report JSON (1 hour) |
 | `GET` | `/lookup/report/{id}/pdf` | Download PDF brief |
 
-**Pipeline:** parallel scrapers (SerpAPI/DuckDuckGo, Reddit, NewsAPI, X, YouTube + `site:` operators for IG/FB/TikTok) → Gemini extraction → Nominatim geocode → report. Rate limit: **5 searches / IP / hour**. Photos stay in memory only (never written to disk).
+**Pipeline:** parallel scrapers (SerpAPI/DuckDuckGo, NewsAPI, X, YouTube) + **Apify crawlers** (Reddit posts/comments, Instagram posts/comments, Facebook public posts) when `APIFY_TOKEN` is set → Gemini extraction → Nominatim geocode → report. Rate limit: **5 searches / IP / hour**. Photos stay in memory only (never written to disk).
+
+**Apify setup:** create a token at [Apify Console → Integrations](https://console.apify.com/settings/integrations), set `APIFY_TOKEN` in `backend/.env`, restart uvicorn. Default actors: `scrapeforge/reddit-scraper`, `apify/instagram-scraper`, `scraper_one/facebook-posts-search`.
 
 ---
 
