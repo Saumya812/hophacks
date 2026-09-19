@@ -28,6 +28,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from services.gemini_processor import (
+    _heuristic_extract,
     build_summary,
     extract_sightings_with_gemini,
     extract_sighting_claims,
@@ -222,7 +223,7 @@ def _normalize_name(name: str) -> str:
 
 
 # Bump when heatmap/geocode/extractor logic changes so stale in-memory reports are rebuilt
-_CACHE_VERSION = 6
+_CACHE_VERSION = 8
 
 
 def _cache_key(name: str) -> str:
@@ -305,15 +306,22 @@ async def _build_report(full_name: str, photo_data_url: Optional[str]) -> Dict[s
     scraped = await collect_raw_mentions(full_name)
     raw_mentions = scraped.get("raw_mentions") or []
 
-    # Gemini call is sync (google-generativeai) — run in a thread
-    sightings, extraction_engine = await asyncio.to_thread(
-        extract_sightings_with_gemini,
-        full_name,
-        raw_mentions,
-    )
+    # Gemini call is sync — cap so a 429 storm cannot hang the Lookup spinner
+    try:
+        sightings, extraction_engine = await asyncio.wait_for(
+            asyncio.to_thread(
+                extract_sightings_with_gemini,
+                full_name,
+                raw_mentions,
+            ),
+            timeout=22.0,
+        )
+    except asyncio.TimeoutError:
+        sightings = _heuristic_extract(full_name, raw_mentions)
+        extraction_engine = "heuristic_fallback"
     sightings = sort_sightings_chronologically(sightings)
     claims = extract_sighting_claims(sightings, full_name)
-    locations = await geocode_mentions(sightings, raw_mentions)
+    locations = await geocode_mentions(sightings, raw_mentions, person_name=full_name)
 
     # Always merge matching case tip coords so Lookup heatmap aligns with Cases
     case_pts = await asyncio.to_thread(_locations_from_matching_case, full_name)
@@ -404,7 +412,13 @@ async def lookup_search(payload: LookupSearchRequest, request: Request) -> Dict[
     ip = _client_ip(request)
     _check_rate_limit(ip)
 
-    report = await _build_report(full_name, photo_data_url)
+    try:
+        report = await asyncio.wait_for(_build_report(full_name, photo_data_url), timeout=70.0)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail="Search took too long. Public sources or AI extraction stalled — try again.",
+        ) from None
     report["cached"] = False
 
     # Do not name-cache empty/sparse/heuristic reports — retry can improve later

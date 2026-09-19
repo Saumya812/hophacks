@@ -36,10 +36,8 @@ def _row_to_person(row: dict, *, include_owner_token: bool = False, public: bool
 
 
 def _strip_list_photo(row: dict) -> dict:
+    """Public list row: hide owner/contact, keep profile photo for cards."""
     out = dict(row)
-    url = out.get("photo_url") or ""
-    if isinstance(url, str) and url.startswith("data:"):
-        out["photo_url"] = None
     out["owner_token"] = None
     out["contact_email"] = None
     return out

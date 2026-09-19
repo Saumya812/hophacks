@@ -13,7 +13,7 @@ const STATUS_MESSAGES = [
   'Compiling intelligence report...',
 ]
 
-const cacheKey = (personId) => `fmp-case-webintel:v7:${personId}`
+const cacheKey = (personId) => `fmp-case-webintel:v9:${personId}`
 
 export default function CaseWebIntelPanel({ person, autoStart = false }) {
   const [report, setReport] = useState(null)
@@ -74,7 +74,7 @@ export default function CaseWebIntelPanel({ person, autoStart = false }) {
           name: person.name,
           photo: photo || undefined,
         },
-        { timeoutMs: 150_000 },
+        { timeoutMs: 80_000 },
       )
       if (runId !== runIdRef.current) return
       setReport(data)

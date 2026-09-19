@@ -195,7 +195,7 @@ def geocode_query(query: str) -> Optional[Dict[str, Any]]:
         return static
 
     try:
-        with httpx.Client(timeout=12.0, follow_redirects=True) as client:
+        with httpx.Client(timeout=4.0, follow_redirects=True) as client:
             cands = _candidates(q)
             for candidate in cands:
                 static = _static_hit(candidate)

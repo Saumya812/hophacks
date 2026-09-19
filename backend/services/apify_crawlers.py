@@ -181,7 +181,7 @@ async def crawl_reddit(client: httpx.AsyncClient, full_name: str) -> List[Dict[s
             "fetchPostDetails": True,
             "includeNSFW": False,
         },
-        timeout_secs=60,
+        timeout_secs=22,
     )
 
     out: List[Dict[str, Any]] = []
@@ -274,7 +274,7 @@ async def crawl_instagram(client: httpx.AsyncClient, full_name: str) -> List[Dic
             "resultsLimit": 12,
             "searchLimit": 5,
         },
-        timeout_secs=55,
+        timeout_secs=22,
     )
 
     out: List[Dict[str, Any]] = []
@@ -355,7 +355,7 @@ async def crawl_facebook(client: httpx.AsyncClient, full_name: str) -> List[Dict
             "resultsCount": 15,
             "searchType": "top",
         },
-        timeout_secs=55,
+        timeout_secs=22,
     )
 
     out: List[Dict[str, Any]] = []
@@ -435,7 +435,7 @@ async def collect_apify_mentions(full_name: str) -> Dict[str, Any]:
         }
 
     async def _run_all() -> Dict[str, Any]:
-        timeout = httpx.Timeout(70.0, connect=15.0)
+        timeout = httpx.Timeout(28.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             reddit, instagram, facebook = await asyncio.gather(
                 crawl_reddit(client, full_name),
@@ -461,9 +461,9 @@ async def collect_apify_mentions(full_name: str) -> Dict[str, Any]:
         return {"raw_mentions": raw, "sources_status": status}
 
     try:
-        return await asyncio.wait_for(_run_all(), timeout=120.0)
+        return await asyncio.wait_for(_run_all(), timeout=28.0)
     except asyncio.TimeoutError:
-        logger.warning("Apify collect timed out after 120s for %r", full_name)
+        logger.warning("Apify collect timed out after 28s for %r", full_name)
         return {
             "raw_mentions": [],
             "sources_status": {

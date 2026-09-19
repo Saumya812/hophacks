@@ -69,6 +69,15 @@ async function request(path, options = {}) {
     }
 
     return body
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error(
+        timeoutMs
+          ? 'Search timed out. Public sources or AI were slow — try again in a minute.'
+          : 'Request cancelled',
+      )
+    }
+    throw err
   } finally {
     if (timer) clearTimeout(timer)
   }
@@ -125,7 +134,7 @@ export function naturalSearch(query) {
 }
 
 /** Smart Person Search — scrape public sources + Gemini report */
-export function lookupSearch(payload, { timeoutMs = 150_000 } = {}) {
+export function lookupSearch(payload, { timeoutMs = 80_000 } = {}) {
   return request('/lookup/search', {
     method: 'POST',
     body: JSON.stringify(payload),

@@ -15,6 +15,7 @@ import time
 from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from services.gemini_client import gemini_configured
 from services.geocode import geocode_query
@@ -166,55 +167,143 @@ _MASHUP_NOISE_RE = re.compile(
     re.I,
 )
 
+# People-finder / phonebook pages — not sighting intelligence
+_DIRECTORY_HOSTS = (
+    "whitepages.com",
+    "usphonebook.com",
+    "radaris.com",
+    "fastbackgroundcheck.com",
+    "spokeo.com",
+    "beenverified.com",
+    "intelius.com",
+    "peoplefinders.com",
+    "truepeoplesearch.com",
+    "thatsthem.com",
+    "anywho.com",
+    "addresses.com",
+    "familytreenow.com",
+    "checkpeople.com",
+    "instantcheckmate.com",
+)
+
+_OTHER_CASE_BEFORE_RE = re.compile(
+    r"\b("
+    r"last\s+seen|missing\s+person|missing\s+adult|please\s+help|"
+    r"have\s+you\s+seen|amber\s+alert|search\s+underway|"
+    r"if\s+you\s+have\s+seen|spread\s+the\s+word|looking\s+for\s+this\s+missing"
+    r")\b",
+    re.I,
+)
+
+
+def _person_span(name: str, text: str) -> tuple[int, int]:
+    """
+    Start/end index of the best person-name hit in text.
+    Prefers full name, then last-name + compatible first nearby (Abra≈Albra).
+    Never treats a lone surname in a phonebook list as the hit.
+    """
+    low = (text or "").lower()
+    name_l = " ".join((name or "").split()).lower()
+    tokens = _name_tokens(name)
+    if not low.strip() or not name_l:
+        return -1, -1
+    idx = low.find(name_l)
+    if idx >= 0:
+        return idx, idx + len(name_l)
+    if len(tokens) < 2:
+        m = re.search(rf"\b{re.escape(tokens[0])}\b", low) if tokens else None
+        return (m.start(), m.end()) if m else (-1, -1)
+    first, last = tokens[0], tokens[-1]
+    for m in re.finditer(rf"\b{re.escape(last)}\b", low):
+        window = low[max(0, m.start() - 48) : m.end() + 24]
+        for w in re.findall(r"[a-z]{2,}", window):
+            if w == last:
+                continue
+            if w == first or _first_names_compatible(first, w):
+                # Prefer start of the first-name token in the window
+                w_idx = window.find(w)
+                start = max(0, m.start() - 48) + w_idx if w_idx >= 0 else m.start()
+                return start, m.end()
+    return -1, -1
+
+
+def _title_about_person(name: str, title: str) -> bool:
+    return _name_match_strength(name, title or "", "") in {"full", "strong"}
+
+
+def _is_directory_url(url: str) -> bool:
+    host = (urlparse(url).netloc or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return any(host == h or host.endswith("." + h) for h in _DIRECTORY_HOSTS)
+
 
 def _quote_about_person(name: str, quote: str) -> str:
     """Keep only the clause that mentions the person (drop SERP mashup head)."""
     q = (quote or "").strip()
     if not q:
         return ""
-    name_l = " ".join(name.split()).lower()
-    tokens = _name_tokens(name)
-    low = q.lower()
-    idx = low.find(name_l) if name_l else -1
-    if idx < 0 and tokens:
-        idx = low.find(tokens[-1])
-    if idx > 40:
-        return q[idx:][:400].strip(" .…")
+    start, end = _person_span(name, q)
+    if start > 40:
+        return q[start:][:400].strip(" .…")
+    if start >= 0 and end - start < 8:
+        # Expand a tiny name-only slice
+        return q[start : min(len(q), start + 280)].strip(" .…")
     if "..." in q or "…" in q:
         parts = re.split(r"\.\.\.|…", q)
         for part in reversed(parts):
-            pl = part.lower()
-            if name_l and name_l in pl:
-                return part.strip(" .…")[:400]
-            if tokens and tokens[-1] in pl:
+            if _person_span(name, part)[0] >= 0:
                 return part.strip(" .…")[:400]
     return q[:400]
 
 
 def _is_serp_mashup(item: Dict[str, Any], name: str = "") -> bool:
+    """
+    True when SERP/Facebook concatenated an unrelated missing-person post
+    with a blurb that merely mentions our person.
+    """
     quote = item.get("quote") or item.get("snippet") or item.get("text") or ""
     title = item.get("title") or ""
+    url = item.get("url") or ""
     blob = f"{title} {quote}"
     low = blob.lower()
-    name_l = " ".join((name or "").split()).lower()
-    tokens = _name_tokens(name)
-    person_idx = low.find(name_l) if name_l else -1
-    if person_idx < 0 and tokens:
-        person_idx = low.find(tokens[-1])
+    start, _ = _person_span(name, blob)
+    title_has = _title_about_person(name, title)
 
-    noise = _MASHUP_NOISE_RE.search(low)
-    if noise and person_idx > noise.start():
+    if _is_directory_url(url):
         return True
 
-    # Generic SERP mashup: ellipsis joining unrelated headline with person blurb
-    if ("..." in blob or "…" in blob) and person_idx > 60:
-        title_l = title.lower()
-        title_has = (name_l and name_l in title_l) or (
-            tokens and tokens[-1] in title_l and (len(tokens) < 2 or tokens[0] in title_l)
-        )
-        if not title_has:
+    noise = _MASHUP_NOISE_RE.search(low)
+    if noise and start > noise.start():
+        return True
+
+    # Unrelated missing-person / last-seen story appears BEFORE our person
+    if start > 50:
+        before = low[:start]
+        if _OTHER_CASE_BEFORE_RE.search(before) and not title_has:
             return True
+        # Ellipsis-joined SERP mashups
+        if ("..." in blob or "…" in blob) and not title_has:
+            return True
+
+    # Title is clearly about a different missing case
+    if title and not title_has:
+        if _OTHER_CASE_BEFORE_RE.search(title) and start > 30:
+            return True
+
     return False
+
+
+def _story_fingerprint(name: str, item: Dict[str, Any]) -> str:
+    """Collapse near-duplicate shares of the same Abra/Albra update text."""
+    blob = f"{item.get('title') or ''} {item.get('text') or item.get('snippet') or ''}"
+    start, end = _person_span(name, blob)
+    if start < 0:
+        core = re.sub(r"\s+", " ", blob.lower())[:120]
+    else:
+        core = re.sub(r"\s+", " ", blob[max(0, start - 20) : start + 160].lower())
+    core = re.sub(r"[^a-z0-9 ]+", "", core)
+    return core[:100]
 
 
 def format_claim_line(item: Dict[str, Any]) -> str:
@@ -268,47 +357,151 @@ def _name_tokens(name: str) -> List[str]:
     return [t for t in re.split(r"\s+", (name or "").strip().lower()) if len(t) > 1]
 
 
+def _levenshtein(a: str, b: str) -> int:
+    """Small edit distance for first-name typo tolerance (Abra ≈ Albra)."""
+    a, b = (a or "").lower(), (b or "").lower()
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    if abs(len(a) - len(b)) > 2:
+        return 99
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (0 if ca == cb else 1)))
+        prev = cur
+    return prev[-1]
+
+
+def _first_names_compatible(query_first: str, candidate: str) -> bool:
+    q, c = (query_first or "").lower(), (candidate or "").lower()
+    if not q or not c or len(c) < 2:
+        return False
+    if q == c:
+        return True
+    # Allow one-character typos / missing letter (Albra ↔ Abra)
+    return _levenshtein(q, c) <= 1
+
+
 def _name_match_strength(name: str, blob: str, url: str = "") -> str:
     """
     Return 'full' | 'strong' | 'weak' | 'none'.
     full   = exact full-name phrase
-    strong = first + last as whole words
-    weak   = first-only / last-in-url (not enough alone)
+    strong = first+last as whole words, OR last name + first within edit-distance 1
+             (handles Abra/Albra). Never last-name-only (rejects Ajet Lleshi for Albra).
+    weak   = last-only / first-only / last-in-url
     """
     name_l = " ".join((name or "").split()).lower()
     tokens = _name_tokens(name)
     text = f"{blob or ''} {url or ''}".lower()
+    blob_l = (blob or "").lower()
     if not name_l or not text.strip():
         return "none"
     if name_l in text:
         return "full"
-    if len(tokens) >= 2:
-        first_re = re.compile(rf"\b{re.escape(tokens[0])}\b", re.I)
-        last_re = re.compile(rf"\b{re.escape(tokens[-1])}\b", re.I)
-        if first_re.search(blob or "") and last_re.search(blob or ""):
+    if len(tokens) < 2:
+        if tokens and re.search(rf"\b{re.escape(tokens[0])}\b", text, re.I):
             return "strong"
-        if first_re.search(blob or "") and tokens[-1] in (url or "").lower():
-            return "weak"
-        if first_re.search(blob or "") or last_re.search(blob or ""):
-            return "weak"
-    elif tokens and re.search(rf"\b{re.escape(tokens[0])}\b", text, re.I):
+        return "none"
+
+    first, last = tokens[0], tokens[-1]
+    last_re = re.compile(rf"\b{re.escape(last)}\b", re.I)
+    first_re = re.compile(rf"\b{re.escape(first)}\b", re.I)
+
+    # Exact first + last as separate whole words in the text body
+    if first_re.search(blob_l) and last_re.search(blob_l):
         return "strong"
+
+    # Last name present + nearby first-name token within edit distance 1
+    if last_re.search(blob_l):
+        for m in last_re.finditer(blob_l):
+            window = blob_l[max(0, m.start() - 48) : m.end() + 24]
+            for word in re.findall(r"[a-z]{2,}", window):
+                if word == last:
+                    continue
+                if _first_names_compatible(first, word):
+                    return "strong"
+        # last name only (different person sharing surname) → weak
+        if first_re.search(blob_l) or first_re.search(text):
+            return "strong"
+        if last in (url or "").lower() and first_re.search(blob_l):
+            return "strong"
+        return "weak"
+
+    if first_re.search(blob_l) and last in (url or "").lower():
+        return "weak"
+    if first_re.search(blob_l) or last_re.search(blob_l):
+        return "weak"
     return "none"
 
 
-def _mentions_person(name: str, item: Dict[str, Any]) -> bool:
+def mention_matches_person(name: str, item: Dict[str, Any]) -> bool:
+    """True when a raw or extracted mention is about this specific person."""
     blob = (
         f"{item.get('title') or ''} {item.get('quote') or item.get('text') or item.get('snippet') or ''} "
-        f"{item.get('claim_summary') or ''}"
+        f"{item.get('claim_summary') or ''} {item.get('username') or ''}"
     )
     url = item.get("url") or ""
     if _name_match_strength(name, blob, url) in {"full", "strong"}:
         return True
+    # Username handle like albralleshi / abra.lleshi (not random Lleshi relatives)
+    tokens = _name_tokens(name)
+    handle = re.sub(r"[^a-z0-9]", "", (item.get("username") or "").lower())
+    if len(tokens) >= 2 and len(handle) >= 5:
+        first, last = tokens[0], tokens[-1]
+        if last in handle:
+            remainder = handle.replace(last, "", 1)
+            if remainder and (
+                _first_names_compatible(first, remainder)
+                or remainder == first
+            ):
+                return True
+    return False
+
+
+def filter_raw_mentions_for_person(
+    name: str, raw_mentions: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Drop scrapes about other people / keyword noise / SERP mashups / directories
+    before extraction or UI. Dedupes near-identical shared updates.
+    """
+    kept: List[Dict[str, Any]] = []
+    seen_fp: set[str] = set()
+    for item in raw_mentions or []:
+        url = item.get("url") or ""
+        if _is_directory_url(url):
+            continue
+        if not mention_matches_person(name, item):
+            continue
+        if _is_serp_mashup(item, name):
+            continue
+        fp = _story_fingerprint(name, item)
+        if fp and fp in seen_fp:
+            continue
+        if fp:
+            seen_fp.add(fp)
+        kept.append(item)
+    if len(kept) != len(raw_mentions or []):
+        logger.info(
+            "Name/mashup filter: %d → %d raw mentions for %r",
+            len(raw_mentions or []),
+            len(kept),
+            name,
+        )
+    return kept
+
+
+def _mentions_person(name: str, item: Dict[str, Any]) -> bool:
+    if mention_matches_person(name, item):
+        return True
     # Comments often omit the name when the parent post is about the person
     title = item.get("title") or ""
     if "comment on" in title.lower() and _name_match_strength(name, title, "") in {"full", "strong"}:
-        return True
-    if (item.get("kind") or "").lower() == "sighting" and item.get("username"):
         return True
     return False
 
@@ -361,7 +554,7 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
     Rejects first-name-only / vague web hits (major source of inaccurate finds).
     """
     location_words = re.compile(
-        r"\b(in|near|around|at|from)\s+[A-Z][A-Za-z0-9 .'-]{2,40}",
+        r"\b(?:in|near|around|at|from)\s+([A-Z][A-Za-z]+(?:[\s,-]+[A-Z][A-Za-z]+){0,3})",
     )
     time_words = re.compile(
         r"\b(yesterday|today|last\s+night|last\s+week|monday|tuesday|wednesday|"
@@ -382,13 +575,20 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
     tokens = _name_tokens(name)
 
     def _signal_near_name(blob: str) -> bool:
-        """Require missing/sighting language near the person's name (filters SERP mashups)."""
+        """Require missing/sighting language near the person's name (not surname alone)."""
         low = blob.lower()
-        anchors = [name_l] if name_l in low else []
-        if tokens:
-            # last name is a stronger anchor than first
-            anchors.append(tokens[-1])
-            anchors.append(tokens[0])
+        anchors: List[str] = []
+        if name_l in low:
+            anchors.append(name_l)
+        if len(tokens) >= 2:
+            # Prefer first+last window; never treat last-name-only as enough
+            first, last = tokens[0], tokens[-1]
+            for m in re.finditer(rf"\b{re.escape(last)}\b", low):
+                window = low[max(0, m.start() - 48) : m.end() + 24]
+                words = re.findall(r"[a-z]{2,}", window)
+                if any(w == first or _first_names_compatible(first, w) for w in words if w != last):
+                    anchors.append(last)
+                    break
         for a in anchors:
             start = 0
             while True:
@@ -453,15 +653,30 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
             if idx > 80 and _MASHUP_NOISE_RE.search(low[:idx]):
                 continue
 
-        loc_match = location_words.search(blob)
-        is_witness = bool(_WITNESS_RE.search(blob))
-        is_official = bool(_OFFICIAL_LAST_SEEN_RE.search(blob)) and not is_witness
+        # Only read places from a window around THIS person's name
+        p_start, p_end = _person_span(name, blob)
+        near = blob[max(0, p_start - 60) : p_end + 180] if p_start >= 0 else blob[:220]
+        loc_match = location_words.search(near)
+        of_match = re.search(
+            r"\b(?:of|in|near|from)\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})",
+            near,
+        )
+        is_witness = bool(_WITNESS_RE.search(near))
+        is_official = bool(_OFFICIAL_LAST_SEEN_RE.search(near)) and not is_witness
         if is_witness and (has_loc or has_time or title_has_name):
             confidence = "medium"
             kind = "sighting"
         elif has_signal and (has_loc or has_time or title_has_name):
             confidence = "medium"
             kind = "news" if is_official or has_signal else "other"
+        elif re.search(
+            r"\b(sister|brother|family|made\s+contact|says?\s+she.?s\s+safe|"
+            r"missing\s+adult|concerned\s+about\s+her\s+safety)\b",
+            near,
+            re.I,
+        ):
+            confidence = "medium"
+            kind = "news"
         elif (item.get("kind") or "").lower() == "comment" and is_witness and (has_loc or has_time):
             confidence = "medium"
             kind = "sighting"
@@ -479,11 +694,58 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
         if kind == "sighting" and (is_official or _is_serp_mashup({"title": title, "quote": text}, name)):
             kind = "news"
 
+        def _clean_place(raw: str) -> str:
+            location = (raw or "").strip(" .,")
+            _place_stop = {
+                "she", "he", "they", "i", "we", "and", "says", "said", "made",
+                "contact", "was", "is", "are", "the", "a", "an", "this", "my",
+                "her", "his", "their", "who", "that", "with", "from", "about",
+                "under", "influence", "alcohol", "operating", "vehicle",
+            }
+            parts = []
+            for p in re.split(r"[\s,]+", location):
+                if not p:
+                    continue
+                if p.lower() in _place_stop:
+                    break
+                parts.append(p)
+            location = " ".join(parts)
+            if (
+                not location
+                or len(location) > 48
+                or len(location.split()) > 4
+                or re.search(
+                    r"\b(update|safety|reported|missing|found|sister|contact|says|"
+                    r"arrested|investigation|driver|operating)\b",
+                    location,
+                    re.I,
+                )
+            ):
+                return ""
+            for tok in tokens:
+                if re.search(rf"\b{re.escape(tok)}\b", location, re.I):
+                    return ""
+            return location
+
         location = ""
         if loc_match:
-            location = re.sub(
-                r"^(in|near|around|at|from)\s+", "", loc_match.group(0), flags=re.I
-            ).strip()
+            location = _clean_place(loc_match.group(1))
+        if not location and of_match:
+            location = _clean_place(of_match.group(1))
+
+        quote = _quote_about_person(name, text or title or "")
+        # Reject name-only / tiny quotes
+        q_compact = re.sub(r"[^a-z0-9 ]", "", quote.lower()).strip()
+        name_compact = re.sub(r"[^a-z0-9 ]", "", name_l).strip()
+        if not quote or q_compact == name_compact or len(quote) < max(12, len(name) + 3):
+            # Prefer longer nearby context
+            if p_start >= 0:
+                quote = blob[p_start : min(len(blob), p_start + 280)].strip(" .…")
+            else:
+                quote = (text or title or "")[:280]
+            quote = _quote_about_person(name, quote)
+        if not quote or len(quote) < 8:
+            continue
 
         url_key = url.split("?")[0] if url else f"{source}:{title[:60]}"
         if url_key in seen_urls:
@@ -497,7 +759,7 @@ def _heuristic_extract(name: str, raw_mentions: List[Dict[str, Any]]) -> List[Di
                 "date": format_display_date(item.get("date")) or "",
                 "time": (item.get("time") or "")[:40],
                 "location": location,
-                "quote": (text or title or "Public page mentioning this name")[:400],
+                "quote": quote[:400],
                 "confidence": confidence,
                 "url": item.get("url") or "",
                 "kind": kind,
@@ -704,8 +966,10 @@ def extract_sightings_with_gemini(
     )
     system = SYSTEM_PROMPT_TEMPLATE.format(name=name)
     last_exc: Optional[BaseException] = None
-    models = iter_model_fallbacks()
-    primary = models[0] if models else None
+    models = iter_model_fallbacks()[:2]
+    if not models:
+        logger.warning("Gemini models on cooldown — heuristic extractor")
+        return _heuristic_extract(name, raw_mentions), "heuristic_fallback"
 
     for model_name in models:
         # Skip models already cooling from earlier 429s this process
@@ -762,37 +1026,7 @@ def extract_sightings_with_gemini(
             if is_429:
                 wait = _parse_retry_seconds(exc)
                 mark_model_rate_limited(model_name, min(wait, 60.0))
-                # One short retry only for the primary model; otherwise rotate immediately
-                if model_name == primary and wait <= 12:
-                    logger.warning(
-                        "Gemini %s 429 — brief retry in %.0fs",
-                        model_name,
-                        wait,
-                    )
-                    time.sleep(wait)
-                    try:
-                        model = get_generative_model(
-                            system_instruction=system,
-                            model_name=model_name,
-                        )
-                        response = model.generate_content(
-                            prompt,
-                            generation_config={
-                                "temperature": 0.1,
-                                "response_mime_type": "application/json",
-                            },
-                        )
-                        text = getattr(response, "text", "") or ""
-                        mentions = _extract_json_array(text)
-                        cleaned = [_normalize_mention(m, name) for m in mentions]
-                        cleaned = [m for m in cleaned if _mentions_person(name, m)]
-                        cleaned = _enrich_mentions_from_raw(cleaned, raw_mentions)
-                        if cleaned:
-                            return cleaned, "gemini"
-                    except Exception as exc2:  # noqa: BLE001
-                        last_exc = exc2
-                        mark_model_rate_limited(model_name, _parse_retry_seconds(exc2))
-                logger.warning("Gemini %s rate-limited — rotating", model_name)
+                logger.warning("Gemini %s rate-limited — rotating (no wait)", model_name)
                 continue
             logger.warning("Gemini %s failed (%s)", model_name, exc)
             continue
@@ -843,9 +1077,10 @@ def _drop_geo_outliers(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 async def geocode_mentions(
     sightings: List[Dict[str, Any]],
     raw_mentions: Optional[List[Dict[str, Any]]] = None,
+    person_name: str = "",
 ) -> List[Dict[str, Any]]:
     """
-    Geocode unique location strings from sightings (and raw mention text as fallback).
+    Geocode unique location strings from sightings (and name-matched raw text as fallback).
     Returns list of {lat, lng, label, count} for the heatmap.
     """
     counts: Counter = Counter()
@@ -856,13 +1091,18 @@ async def geocode_mentions(
             counts[loc] += 1
 
     if not counts and raw_mentions:
+        # Only scan mentions that are about THIS person — never unrelated scrapes
         phrase = re.compile(
-            r"\b(?:in|near|around|at)\s+([A-Z][A-Za-z0-9 .'-]{2,48})",
+            r"\b(?:in|near|around|at)\s+([A-Z][A-Za-z]+(?:[\s,-]+[A-Z][A-Za-z]+){0,3})",
         )
         for m in raw_mentions:
+            if person_name and not mention_matches_person(person_name, m):
+                continue
             blob = f"{m.get('title') or ''} {m.get('text') or m.get('snippet') or ''}"
             for match in phrase.finditer(blob):
                 label = match.group(1).strip(" .,")
+                # Cut off at sentence junk
+                label = re.split(r"[.!?|/]", label)[0].strip()
                 if len(label) >= 2:
                     counts[label] += 1
 
@@ -871,17 +1111,40 @@ async def geocode_mentions(
 
     def _ok_label(label: str) -> bool:
         t = (label or "").strip()
-        if len(t) < 3:
+        if len(t) < 3 or len(t) > 48:
             return False
-        if re.match(r"^[a-z]\s", t):  # e.g. "m Lily" from truncated text
+        words = t.split()
+        if len(words) > 4:
             return False
-        if t.lower() in {"unknown", "n/a", "none", "null", "the", "a", "an"}:
+        if any(
+            w.lower()
+            in {
+                "she", "he", "they", "says", "said", "made", "contact", "update",
+                "safety", "missing", "found",
+            }
+            for w in words
+        ):
             return False
-        # Need a letter run of length >= 3
+        low = t.lower()
+        if low in {"unknown", "n/a", "none", "null", "the", "a", "an"}:
+            return False
+        # Headlines / non-places that used to become "top location"
+        if re.search(
+            r"\b(update|safety|reported|missing|found|sister|brother|contact|says)\b",
+            low,
+        ):
+            return False
+        if person_name:
+            for tok in _name_tokens(person_name):
+                if re.search(rf"\b{re.escape(tok)}\b", low):
+                    return False
+        # Truncated fragments like "Ancho"
+        if len(words) == 1 and len(t) < 5:
+            return False
         return bool(re.search(r"[A-Za-z]{3,}", t))
 
     locations: List[Dict[str, Any]] = []
-    for label in list(counts.keys())[:25]:
+    for label in list(counts.keys())[:8]:
         if not _ok_label(label):
             continue
         hit = await asyncio.to_thread(geocode_query, label)
@@ -895,7 +1158,6 @@ async def geocode_mentions(
                 "count": counts[label],
             }
         )
-        await asyncio.sleep(0.15)
 
     return _drop_geo_outliers(locations)
 

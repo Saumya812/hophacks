@@ -31,6 +31,7 @@ from services.heatmap import (
     points_from_sighting_rows,
 )
 from routers.persons import _row_to_person
+from services.geocode import geocode_query
 from services.owner_auth import require_owner
 from pathlib import Path
 
