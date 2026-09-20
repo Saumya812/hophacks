@@ -10,7 +10,8 @@ const apiProxy = {
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 5174,
+    strictPort: false,
     host: true,
     // Cloudflare quick tunnels send Host: *.trycloudflare.com
     allowedHosts: true,
@@ -25,6 +26,7 @@ export default defineConfig({
       '/lookup': apiProxy,
       '/faces': apiProxy,
       '/analytics': apiProxy,
+      '/dashboard': apiProxy,
       '/live': apiProxy,
       '/audio': apiProxy,
       '/alerts': apiProxy,

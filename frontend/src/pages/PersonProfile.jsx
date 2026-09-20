@@ -268,6 +268,15 @@ export default function PersonProfile() {
     return items.sort(compareTimelineEvents)
   }, [person, sightings, updates])
 
+  const isActive = (person?.status || '').toLowerCase() === 'active'
+  const isFound = (person?.status || '').toLowerCase() === 'found'
+  const profileTabs = isFound ? TABS.filter((t) => t.id !== 'tips') : TABS
+
+  // Must stay above early returns — Rules of Hooks
+  useEffect(() => {
+    if (isFound && tab === 'tips') setTab('overview')
+  }, [isFound, tab])
+
   if (loading) {
     return <p className="page-pad text-text-muted">Loading profile…</p>
   }
@@ -279,14 +288,6 @@ export default function PersonProfile() {
     )
   }
   if (!person) return null
-
-  const isActive = (person.status || '').toLowerCase() === 'active'
-  const isFound = (person.status || '').toLowerCase() === 'found'
-  const profileTabs = isFound ? TABS.filter((t) => t.id !== 'tips') : TABS
-
-  useEffect(() => {
-    if (isFound && tab === 'tips') setTab('overview')
-  }, [isFound, tab])
 
   return (
     <div className="bg-cream pb-20">

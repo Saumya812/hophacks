@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   1) Installs cloudflared if missing
-  2) Opens a public HTTPS URL to Vite (:5173) — API is proxied same-origin
+  2) Opens a public HTTPS URL to Vite (:5174) — API is proxied same-origin
   3) Opens a second public URL to SpacetimeDB (:3000) for live WS
   4) Writes frontend/.env.tunnel with the Spacetime WSS URL
 
@@ -22,27 +22,29 @@ function Ensure-Cloudflared {
   throw "cloudflared missing. Expected at scripts/tools/cloudflared.exe"
 }
 
-function Start-QuickTunnel([string]$Cloudflared, [string]$Url, [string]$LogPath) {
-  if (Test-Path $LogPath) { Remove-Item $LogPath -Force }
+function Start-QuickTunnel([string]$Cloudflared, [string]$Url, [string]$OutPath, [string]$ErrPath) {
+  foreach ($p in @($OutPath, $ErrPath)) {
+    if (Test-Path $p) { Clear-Content $p -ErrorAction SilentlyContinue }
+    else { New-Item -ItemType File -Path $p -Force | Out-Null }
+  }
   $proc = Start-Process -FilePath $Cloudflared `
     -ArgumentList @("tunnel", "--url", $Url, "--no-autoupdate") `
-    -RedirectStandardError $LogPath `
-    -RedirectStandardOutput $LogPath `
+    -RedirectStandardOutput $OutPath `
+    -RedirectStandardError $ErrPath `
     -PassThru -WindowStyle Hidden
   return $proc
 }
 
-function Wait-TunnelUrl([string]$LogPath, [int]$TimeoutSec = 45) {
+function Wait-TunnelUrl([string]$OutPath, [string]$ErrPath, [int]$TimeoutSec = 45) {
   $deadline = (Get-Date).AddSeconds($TimeoutSec)
   while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 1
-    if (-not (Test-Path $LogPath)) { continue }
-    $text = Get-Content $LogPath -Raw -ErrorAction SilentlyContinue
+    $text = ((Get-Content $OutPath -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $ErrPath -Raw -ErrorAction SilentlyContinue))
     if (-not $text) { continue }
     $m = [regex]::Match($text, "https://[a-z0-9-]+\.trycloudflare\.com")
     if ($m.Success) { return $m.Value }
   }
-  throw "Timed out waiting for tunnel URL. Log:`n$(Get-Content $LogPath -Raw -ErrorAction SilentlyContinue)"
+  throw "Timed out waiting for tunnel URL. Out:`n$(Get-Content $OutPath -Raw -ErrorAction SilentlyContinue)`nErr:`n$(Get-Content $ErrPath -Raw -ErrorAction SilentlyContinue)"
 }
 
 Write-Host "== FindMyPal demo tunnel (Option A) =="
@@ -50,7 +52,7 @@ $cf = Ensure-Cloudflared
 Write-Host "cloudflared: $cf"
 
 # Verify local services
-foreach ($port in @(5173, 8000, 3000)) {
+foreach ($port in @(5174, 8000, 3000)) {
   $listening = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
   if (-not $listening) {
     Write-Warning "Nothing listening on port $port. Start Vite/API/Spacetime before demos."
@@ -61,17 +63,19 @@ foreach ($port in @(5173, 8000, 3000)) {
 
 $logDir = Join-Path $Root "scripts\.tunnel-logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-$webLog = Join-Path $logDir "web.err.log"
-$stLog = Join-Path $logDir "spacetime.err.log"
+$webOut = Join-Path $logDir "web.out.log"
+$webErr = Join-Path $logDir "web.err.log"
+$stOut = Join-Path $logDir "st.out.log"
+$stErr = Join-Path $logDir "st.err.log"
 
-Write-Host "Starting web tunnel -> http://127.0.0.1:5173 ..."
-$webProc = Start-QuickTunnel $cf "http://127.0.0.1:5173" $webLog
-$webUrl = Wait-TunnelUrl $webLog
+Write-Host "Starting web tunnel -> http://127.0.0.1:5174 ..."
+$webProc = Start-QuickTunnel $cf "http://127.0.0.1:5174" $webOut $webErr
+$webUrl = Wait-TunnelUrl $webOut $webErr
 Write-Host "WEB  $webUrl"
 
 Write-Host "Starting Spacetime tunnel -> http://127.0.0.1:3000 ..."
-$stProc = Start-QuickTunnel $cf "http://127.0.0.1:3000" $stLog
-$stHttp = Wait-TunnelUrl $stLog
+$stProc = Start-QuickTunnel $cf "http://127.0.0.1:3000" $stOut $stErr
+$stHttp = Wait-TunnelUrl $stOut $stErr
 $stWs = $stHttp -replace "^https://", "wss://"
 Write-Host "SPACETIME WS  $stWs"
 
