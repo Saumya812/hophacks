@@ -121,7 +121,7 @@ export default function TipForm({ personId, personName, onSubmitted }) {
       })
 
       setDone(true)
-      showToast('Tip submitted — case updated', 'success')
+      showToast('Submitted! Police will be notified.', 'success')
       onSubmitted?.()
     } catch (err) {
       setError(err.message || 'Could not submit tip')
@@ -158,10 +158,10 @@ export default function TipForm({ personId, personName, onSubmitted }) {
         >
           ✓
         </div>
-        <h3 className="font-display text-2xl text-navy">Tip submitted</h3>
+        <h3 className="font-display text-2xl text-navy">Submitted!</h3>
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-text-muted">
-          Your tip has been recorded and local authorities have been notified. Thank you for helping
-          bring {personName || 'them'} home.
+          Your tip is on the case. Police will be notified so they can review it through
+          official channels. Thank you for helping bring {personName || 'them'} home.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <button type="button" className="btn-primary" onClick={reset}>
