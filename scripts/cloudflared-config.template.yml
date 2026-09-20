@@ -1,8 +1,6 @@
-# Cloudflare named tunnel → local FindMyPal (Option A + GoDaddy domain)
-#
 # Prerequisites:
 #   1. findmypal.us DNS is in YOUR Cloudflare account (nameservers already look like CF)
-#   2. Local Vite :5173, API :8000, Spacetime :3000 running
+#   2. Local Vite :5174, API :8000, Spacetime :3000 running
 #   3. One-time browser login: cloudflared tunnel login
 #
 # After this is up, share https://findmypal.us (not trycloudflare.com).
@@ -16,7 +14,7 @@ ingress:
     service: http://127.0.0.1:3000
   # Main site (Vite proxies /persons, /dashboard, etc. to API)
   - hostname: findmypal.us
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5174
   - hostname: www.findmypal.us
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5174
   - service: http_status:404

@@ -38,6 +38,7 @@ app.add_middleware(
         r"|https://[a-z0-9-]+\.trycloudflare\.com$"
         r"|https://[a-z0-9-]+\.ngrok-free\.app$"
         r"|https://[a-z0-9-]+\.ngrok\.io$"
+        r"|https://(www\.)?findmypal\.us$"
     ),
     allow_credentials=True,
     allow_methods=["*"],

@@ -60,9 +60,9 @@ ingress:
   - hostname: spacetime.findmypal.us
     service: http://127.0.0.1:3000
   - hostname: findmypal.us
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5174
   - hostname: www.findmypal.us
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:5174
   - service: http_status:404
 "@ | Set-Content $configPath -Encoding UTF8
 Write-Host "Wrote $configPath"

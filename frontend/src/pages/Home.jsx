@@ -96,7 +96,7 @@ export default function Home() {
           style={{ animationDelay: '220ms' }}
         >
           <Link to="/lookup" className="btn-primary">
-            Search Lookup
+            Search/Lookup
           </Link>
           <Link to="/report" className="btn-secondary">
             Report
