@@ -325,8 +325,8 @@ def city_dashboard_stats() -> Dict[str, Any]:
         persons = sb.table("persons").select("id,status,last_seen_location,created_at,found_at").execute().data or []
     except Exception:
         persons = sb.table("persons").select("id,status,last_seen_location,created_at").execute().data or []
-    active = [p for p in persons if p.get("status") == "active"]
-    found = [p for p in persons if p.get("status") == "found"]
+    active = [p for p in persons if (p.get("status") or "").lower() == "active"]
+    found = [p for p in persons if (p.get("status") or "").lower() == "found"]
     # crude month resolution
     now = utcnow()
     month_found = 0

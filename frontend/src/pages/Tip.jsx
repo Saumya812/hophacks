@@ -28,7 +28,11 @@ export default function Tip() {
     let cancelled = false
     getPerson(id)
       .then((p) => {
-        if (!cancelled) setPerson(p)
+        if (cancelled) return
+        setPerson(p)
+        if ((p.status || '').toLowerCase() === 'found' || (p.status || '').toLowerCase() === 'closed') {
+          setError('This case is already resolved — tips are closed.')
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err.message || 'Case not found')
@@ -91,6 +95,27 @@ export default function Tip() {
       <p className="page-pad rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
         {error || 'Case not found'}
       </p>
+    )
+  }
+
+  const tipsClosed =
+    (person.status || '').toLowerCase() === 'found' ||
+    (person.status || '').toLowerCase() === 'closed'
+
+  if (tipsClosed) {
+    return (
+      <div className="page-pad mx-auto max-w-xl space-y-4 pt-10">
+        <h1 className="font-display text-3xl text-navy">Tips closed</h1>
+        <p className="text-text-muted">
+          <Link to={`/person/${person.id}`} className="font-semibold text-navy underline">
+            {person.name}
+          </Link>{' '}
+          has already been marked found / resolved, so new tips are not accepted.
+        </p>
+        <Link to="/found" className="btn-primary inline-flex">
+          Back to Found
+        </Link>
+      </div>
     )
   }
 

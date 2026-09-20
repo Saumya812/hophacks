@@ -1,0 +1,8 @@
+# Live demo tunnels (started locally)
+
+WEB: https://net-muze-court-coated.trycloudflare.com
+SPACETIME: wss://dubai-courage-accurately-betting.trycloudflare.com
+
+Local: http://127.0.0.1:5174 (Vite) · http://127.0.0.1:8000 (API)
+
+Keep cloudflared processes running. Restart Vite once if live Spacetime tips should use the WSS URL from frontend/.env.

@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # Optional sponsor / advanced integrations
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
-    elevenlabs_model: str = "eleven_monolingual_v1"
+    elevenlabs_model: str = "eleven_multilingual_v2"
     backboard_api_key: str = ""
     snowflake_account: str = ""
 
