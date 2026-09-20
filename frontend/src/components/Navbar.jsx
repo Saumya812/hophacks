@@ -26,7 +26,7 @@ export default function Navbar() {
             className="hidden text-[10px] font-medium uppercase text-sage sm:inline"
             style={{ letterSpacing: '2px' }}
           >
-            Missing Persons
+            Powered by People
           </span>
         </Link>
 
