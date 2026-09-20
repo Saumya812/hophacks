@@ -97,7 +97,7 @@ export default function Modal({ person, gallerySrc, open, onClose }) {
               className="flex h-[280px] w-full items-center justify-center bg-stone font-display text-5xl text-ink/25"
               style={{ borderRadius: '16px 16px 0 0' }}
             >
-              {(person?.name || '?').charAt(0)}
+              ?
             </div>
           )}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/80 to-transparent px-5 pb-4 pt-16">

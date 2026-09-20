@@ -77,9 +77,11 @@ export default function Home() {
         <p className="mt-5 text-xs text-text-muted">
           {loading
             ? 'Loading active cases…'
-            : persons.length > 0
+            : persons.some((p) => p.photo_url)
               ? 'Hover a frame · click to tip, share, or look up'
-              : 'Active cases appear here when published'}
+              : persons.length > 0
+                ? 'Active cases are listed under Missing — photos appear on the wall when available'
+                : 'Active cases appear here when published'}
         </p>
 
         {error && (

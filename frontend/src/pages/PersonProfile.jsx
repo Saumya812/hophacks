@@ -292,8 +292,8 @@ export default function PersonProfile() {
             {person.photo_url ? (
               <img src={person.photo_url} alt={person.name} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full items-center justify-center font-display text-2xl text-white/40">
-                {(person.name || '?').charAt(0)}
+              <div className="flex h-full items-center justify-center font-display text-3xl text-white/45">
+                ?
               </div>
             )}
           </div>
