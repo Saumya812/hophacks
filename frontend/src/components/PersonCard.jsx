@@ -2,7 +2,6 @@
  * Case card for the homepage grid.
  */
 import { Link } from 'react-router-dom'
-import SaveCaseButton from './SaveCaseButton.jsx'
 
 export default function PersonCard({ person, index = 0 }) {
   const lastSeen = [person.last_seen_location, person.last_seen_date]
@@ -48,14 +47,11 @@ export default function PersonCard({ person, index = 0 }) {
       </div>
 
       <div className="relative z-[1] min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <h2 className="font-display text-xl text-navy transition-colors group-hover:text-accent">
-            <Link to={`/person/${person.id}`} className="relative z-[1]">
-              {person.name}
-            </Link>
-          </h2>
-          <SaveCaseButton personId={person.id} compact />
-        </div>
+        <h2 className="font-display text-xl text-navy transition-colors group-hover:text-accent">
+          <Link to={`/person/${person.id}`} className="relative z-[1]">
+            {person.name}
+          </Link>
+        </h2>
         <p className="mt-1 text-[13px] font-medium text-accent">
           Last seen · {lastSeen || 'Unknown'}
         </p>

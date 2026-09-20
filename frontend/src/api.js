@@ -1,9 +1,17 @@
 /**
  * FindMyPal API client.
  * Talks to the FastAPI backend (default http://127.0.0.1:8000).
+ * Set VITE_API_BASE_URL to "" for same-origin / Cloudflare Tunnel demos (Vite proxies).
  */
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
+function resolveApiBase() {
+  const raw = import.meta.env.VITE_API_BASE_URL
+  if (raw === '' || raw === '/') return ''
+  if (raw == null || raw === undefined) return 'http://127.0.0.1:8000'
+  return String(raw).replace(/\/$/, '')
+}
+
+const API_BASE = resolveApiBase()
 
 export function getOwnerToken(personId) {
   if (!personId) return ''
