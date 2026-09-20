@@ -323,6 +323,10 @@ body {
     animation: live-pulse 2s infinite;
   }
 
+  .live-pulse-dot-alert {
+    background: #dc2626;
+  }
+
   .toast-slide-in {
     animation: toast-slide-in 0.3s ease both;
   }
