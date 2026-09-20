@@ -27,8 +27,8 @@ export default function PersonCard({ person, index = 0 }) {
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center font-display text-xl text-navy/30">
-            {(person.name || '?').charAt(0)}
+          <div className="flex h-full w-full items-center justify-center font-display text-2xl text-navy/30">
+            ?
           </div>
         )}
         {status === 'active' ? (

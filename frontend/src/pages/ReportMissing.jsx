@@ -104,17 +104,17 @@ export default function ReportMissing() {
                 className="card-interactive group overflow-hidden"
               >
                 <div className="relative h-60 overflow-hidden bg-misty/40">
-                  {p.photo_url ? (
-                    <img
-                      src={p.photo_url}
-                      alt={p.name}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center font-display text-5xl text-ink/20">
-                      {(p.name || '?').charAt(0)}
-                    </div>
-                  )}
+                {p.photo_url ? (
+                  <img
+                    src={p.photo_url}
+                    alt={p.name}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center font-display text-5xl text-ink/25">
+                    ?
+                  </div>
+                )}
                   <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded bg-white/95 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700 shadow-sm">
                     <span className="live-pulse-dot live-pulse-dot-alert" />
                     Active

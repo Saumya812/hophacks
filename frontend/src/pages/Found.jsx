@@ -178,7 +178,7 @@ export default function Found() {
                       <img src={p.photo_url} alt={p.name} className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center font-display text-5xl text-navy/25">
-                        {(p.name || '?').charAt(0)}
+                        ?
                       </div>
                     )}
                     <div
