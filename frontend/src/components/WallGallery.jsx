@@ -1,120 +1,154 @@
 /**
- * Centered wall-gallery (1-2-3-2-1).
- * Local photos: public/gallery/01.jpg … 09.jpg
- * When active cases load, frames link to case modal (hover + click).
+ * Hologram wall gallery — 5-column diamond wall
+ * (2 portrait | 3 portrait | 4 landscape | 3 portrait | 2 portrait)
+ * with glass / glow hologram styling.
  */
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { formatEventDate } from '../lib/caseHelpers.js'
 
+const MAX_FRAMES = 14
+
+/** Slot definitions for the diamond wall (index = wall position). */
 const SLOTS = [
-  { id: '01', orient: 'portrait', src: '/gallery/01.jpg' },
-  { id: '02', orient: 'portrait', src: '/gallery/02.jpg' },
-  { id: '03', orient: 'portrait', src: '/gallery/03.jpg' },
-  { id: '04', orient: 'landscape', src: '/gallery/04.jpg' },
-  { id: '05', orient: 'landscape', src: '/gallery/05.jpg' },
-  { id: '06', orient: 'landscape', src: '/gallery/06.jpg' },
-  { id: '07', orient: 'portrait', src: '/gallery/07.jpg' },
-  { id: '08', orient: 'portrait', src: '/gallery/08.jpg' },
-  { id: '09', orient: 'portrait', src: '/gallery/09.jpg' },
+  { orient: 'portrait' }, // 0 outer-left
+  { orient: 'portrait' }, // 1 outer-left
+  { orient: 'portrait' }, // 2 mid-left
+  { orient: 'portrait' }, // 3 mid-left
+  { orient: 'portrait' }, // 4 mid-left
+  { orient: 'landscape' }, // 5 center
+  { orient: 'landscape' }, // 6 center
+  { orient: 'landscape' }, // 7 center
+  { orient: 'landscape' }, // 8 center
+  { orient: 'portrait' }, // 9 mid-right
+  { orient: 'portrait' }, // 10 mid-right
+  { orient: 'portrait' }, // 11 mid-right
+  { orient: 'portrait' }, // 12 outer-right
+  { orient: 'portrait' }, // 13 outer-right
 ]
 
-function Frame({ slot, person, index, onSelect }) {
-  const [localFailed, setLocalFailed] = useState(false)
-  const [caseFailed, setCaseFailed] = useState(false)
-  const orientClass =
-    slot.orient === 'landscape' ? 'wall-frame-landscape' : 'wall-frame-portrait'
+/** Fill center first, then flanking columns, then outers. */
+const FILL_ORDER = [5, 6, 7, 8, 2, 3, 4, 9, 10, 11, 0, 1, 12, 13]
 
-  const casePhoto = person?.photo_url && !caseFailed ? person.photo_url : null
-  const localPhoto = !localFailed ? slot.src : null
-  const src = casePhoto || localPhoto
-  const interactive = Boolean(person)
+const COLUMNS = [
+  { kind: 'outer', slots: [0, 1] },
+  { kind: 'mid', slots: [2, 3, 4] },
+  { kind: 'center', slots: [5, 6, 7, 8] },
+  { kind: 'mid', slots: [9, 10, 11] },
+  { kind: 'outer', slots: [12, 13] },
+]
+
+function Frame({ person, orient, index, onSelect }) {
+  const [failed, setFailed] = useState(false)
+  const src = !failed && person?.photo_url ? person.photo_url : null
 
   return (
     <button
       type="button"
-      className={`wall-frame wall-frame-interactive ${orientClass}`}
-      style={{ animationDelay: `${80 + index * 70}ms` }}
-      aria-label={
-        person
-          ? `View case for ${person.name}`
-          : `Gallery frame ${slot.id}`
-      }
-      onClick={() => onSelect?.({ person, gallerySrc: src || slot.src, slotId: slot.id })}
+      className={`holo-frame holo-frame-${orient}`}
+      style={{ animationDelay: `${index * 0.18}s` }}
+      aria-label={`View case for ${person.name}`}
+      onClick={() => onSelect?.({ person, gallerySrc: src, slotId: person.id })}
     >
-      {src ? (
-        <img
-          src={src}
-          alt={person?.name || ''}
-          loading="lazy"
-          onError={() => {
-            if (casePhoto) setCaseFailed(true)
-            else setLocalFailed(true)
-          }}
-        />
-      ) : (
-        <div className="wall-frame-empty">
-          Add
-          <br />
-          {slot.id}.jpg
-        </div>
-      )}
-
-      <div className="wall-frame-overlay">
-        {person ? (
-          <>
-            <p className="wall-frame-name">{person.name}</p>
-            <p className="wall-frame-meta">
-              {person.last_seen_location}
-              {person.last_seen_date
-                ? ` · ${formatEventDate(person.last_seen_date) || person.last_seen_date}`
-                : ''}
-            </p>
-            <p className="wall-frame-cta">View case →</p>
-          </>
+      <span className="holo-frame-glass">
+        {src ? (
+          <img
+            src={src}
+            alt={person.name || ''}
+            loading="lazy"
+            onError={() => setFailed(true)}
+          />
         ) : (
-          <p className="wall-frame-cta">Search Lookup →</p>
+          <span className="holo-frame-empty">?</span>
         )}
-      </div>
-
-      {interactive && (
-        <span className="wall-frame-dot" aria-hidden title="Active case" />
-      )}
+        <span className="holo-frame-overlay">
+          <span className="holo-frame-name">{person.name}</span>
+          <span className="holo-frame-meta">
+            {person.last_seen_location}
+            {person.last_seen_date
+              ? ` · ${formatEventDate(person.last_seen_date) || person.last_seen_date}`
+              : ''}
+          </span>
+          <span className="holo-frame-cta">View case →</span>
+        </span>
+        <span className="holo-frame-dot" title="Active case" aria-hidden />
+      </span>
     </button>
   )
 }
 
 export default function WallGallery({ persons = [], onSelect }) {
-  const frames = SLOTS.map((slot, i) => ({
-    slot,
-    person: persons[i] || null,
-    index: i,
-  }))
+  const stageRef = useRef(null)
+  const withPhotos = (persons || [])
+    .filter((p) => Boolean(p?.photo_url))
+    .slice(0, MAX_FRAMES)
 
-  const cols = [
-    [frames[0]],
-    [frames[1], frames[2]],
-    [frames[3], frames[4], frames[5]],
-    [frames[6], frames[7]],
-    [frames[8]],
-  ]
+  const onMove = useCallback((e) => {
+    const el = stageRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const px = (e.clientX - r.left) / r.width - 0.5
+    const py = (e.clientY - r.top) / r.height - 0.5
+    el.style.setProperty('--parx', `${px * 8}deg`)
+    el.style.setProperty('--pary', `${-py * 5}deg`)
+  }, [])
+
+  const onLeave = useCallback(() => {
+    const el = stageRef.current
+    if (!el) return
+    el.style.setProperty('--parx', '0deg')
+    el.style.setProperty('--pary', '0deg')
+  }, [])
+
+  if (withPhotos.length === 0) {
+    return (
+      <div className="holo-stage holo-stage-empty" aria-label="Photo gallery">
+        <p className="text-sm text-text-muted">
+          Cases with photos will appear here as floating frames.
+        </p>
+      </div>
+    )
+  }
+
+  const assigned = Array(MAX_FRAMES).fill(null)
+  withPhotos.forEach((p, i) => {
+    assigned[FILL_ORDER[i]] = p
+  })
 
   return (
-    <div className="wall-gallery" aria-label="Photo gallery wall">
-      {cols.map((col, i) => (
-        <div key={i} className={`wall-col ${i === 2 ? 'wall-col-center' : ''}`}>
-          {col.map(({ slot, person, index }) => (
-            <Frame
-              key={slot.id}
-              slot={slot}
-              person={person}
-              index={index}
-              onSelect={onSelect}
-            />
-          ))}
-        </div>
-      ))}
+    <div
+      ref={stageRef}
+      className="holo-stage"
+      aria-label="Hologram photo gallery"
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+    >
+      <div className="holo-field holo-wall">
+        {COLUMNS.map((col, ci) => {
+          const items = col.slots
+            .map((slotIndex) => ({
+              slotIndex,
+              person: assigned[slotIndex],
+              orient: SLOTS[slotIndex].orient,
+            }))
+            .filter((row) => row.person)
+
+          if (items.length === 0) return null
+
+          return (
+            <div key={`col-${ci}`} className={`holo-col holo-col-${col.kind}`}>
+              {items.map((item) => (
+                <Frame
+                  key={item.person.id}
+                  person={item.person}
+                  orient={item.orient}
+                  index={item.slotIndex}
+                  onSelect={onSelect}
+                />
+              ))}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
-
-export { SLOTS as GALLERY_SLOTS }

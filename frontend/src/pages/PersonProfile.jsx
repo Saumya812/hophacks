@@ -2,7 +2,7 @@
  * Person profile — navy hero + tabbed Overview / Tips & Map / Web Intel / Family Tools.
  * Additive: live tip feed, activity timeline, TipForm, found overlay (realtime).
  */
-import { Component, useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getPerson, listSightings, getCaseSummary, refreshCaseSummary } from '../api.js'
 import { listCaseUpdates } from '../advancedApi.js'
@@ -15,7 +15,6 @@ import OriginalSourcePanel from '../components/OriginalSourcePanel.jsx'
 import HowYouCanHelp from '../components/HowYouCanHelp.jsx'
 import CaseFreshness from '../components/CaseFreshness.jsx'
 import CaseSourceLibrary from '../components/CaseSourceLibrary.jsx'
-import SaveCaseButton from '../components/SaveCaseButton.jsx'
 import NearestCamerasPanel from '../components/NearestCamerasPanel.jsx'
 import TipForm from '../components/TipForm.jsx'
 import FoundOverlay from '../components/FoundOverlay.jsx'
@@ -79,15 +78,21 @@ export default function PersonProfile() {
   const [tab, setTab] = useState('overview')
   const [shareMsg, setShareMsg] = useState('')
   const [showFoundOverlay, setShowFoundOverlay] = useState(false)
+  // Skip celebrate/redirect when opening an already-resolved case (fixes bounce to /found)
+  const loadedAsFoundRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
+    loadedAsFoundRef.current = false
     async function load() {
       setLoading(true)
       setError('')
       try {
         const p = await getPerson(id)
         if (cancelled) return
+        if ((p.status || '').toLowerCase() === 'found') {
+          loadedAsFoundRef.current = true
+        }
         setPerson(p)
         setLoading(false)
 
@@ -138,7 +143,10 @@ export default function PersonProfile() {
       getPerson(id)
         .then((p) => {
           setPerson(p)
-          if ((p.status || '').toLowerCase() === 'found') {
+          const isFound = (p.status || '').toLowerCase() === 'found'
+          // Only celebrate a live transition — not when browsing an already-found profile
+          if (isFound && !loadedAsFoundRef.current) {
+            loadedAsFoundRef.current = true
             setShowFoundOverlay(true)
             showToast(`${p.name || 'This person'} has been found safe`, 'success')
             setTimeout(() => navigate('/found'), 3000)
@@ -152,17 +160,18 @@ export default function PersonProfile() {
   useEffect(() => {
     if (!id) return undefined
     const timer = setInterval(() => {
-      listSightings(id)
-        .then((s) => setSightings(s.sightings || []))
-        .catch(() => {})
+      if (!loadedAsFoundRef.current) {
+        listSightings(id)
+          .then((s) => setSightings(s.sightings || []))
+          .catch(() => {})
+      }
       getPerson(id)
         .then((p) => {
           setPerson((prev) => {
-            if (
-              prev &&
-              (prev.status || '').toLowerCase() !== 'found' &&
-              (p.status || '').toLowerCase() === 'found'
-            ) {
+            const wasFound = (prev?.status || '').toLowerCase() === 'found'
+            const isFound = (p.status || '').toLowerCase() === 'found'
+            if (!wasFound && isFound && !loadedAsFoundRef.current) {
+              loadedAsFoundRef.current = true
               setShowFoundOverlay(true)
               showToast(`${p.name} has been found safe`, 'success')
               setTimeout(() => navigate('/found'), 3000)
@@ -259,6 +268,15 @@ export default function PersonProfile() {
     return items.sort(compareTimelineEvents)
   }, [person, sightings, updates])
 
+  const isActive = (person?.status || '').toLowerCase() === 'active'
+  const isFound = (person?.status || '').toLowerCase() === 'found'
+  const profileTabs = isFound ? TABS.filter((t) => t.id !== 'tips') : TABS
+
+  // Must stay above early returns — Rules of Hooks
+  useEffect(() => {
+    if (isFound && tab === 'tips') setTab('overview')
+  }, [isFound, tab])
+
   if (loading) {
     return <p className="page-pad text-text-muted">Loading profile…</p>
   }
@@ -270,8 +288,6 @@ export default function PersonProfile() {
     )
   }
   if (!person) return null
-
-  const isActive = (person.status || '').toLowerCase() === 'active'
 
   return (
     <div className="bg-cream pb-20">
@@ -292,8 +308,8 @@ export default function PersonProfile() {
             {person.photo_url ? (
               <img src={person.photo_url} alt={person.name} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full items-center justify-center font-display text-2xl text-white/40">
-                {(person.name || '?').charAt(0)}
+              <div className="flex h-full items-center justify-center font-display text-3xl text-white/45">
+                ?
               </div>
             )}
           </div>
@@ -338,16 +354,14 @@ export default function PersonProfile() {
               {person.last_seen_time ? ` · ${person.last_seen_time}` : ''}
             </p>
             <div className="flex flex-wrap gap-3 pt-1">
-              <Link to={`/tip/${person.id}`} className="btn-gold">
-                Submit a tip
-              </Link>
+              {isActive && (
+                <Link to={`/tip/${person.id}`} className="btn-gold">
+                  Submit a tip
+                </Link>
+              )}
               <button type="button" className="btn-outline-white" onClick={shareCase}>
                 Share case
               </button>
-              <SaveCaseButton
-                personId={person.id}
-                className="rounded-lg border border-white/40 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              />
               {shareMsg && <span className="self-center text-xs text-white/60">{shareMsg}</span>}
             </div>
           </div>
@@ -357,7 +371,7 @@ export default function PersonProfile() {
       {/* Tabs */}
       <div className="sticky top-[57px] z-20 border-b border-border bg-cream/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 sm:px-6">
-          {TABS.map((t) => (
+          {profileTabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -564,14 +578,21 @@ export default function PersonProfile() {
 
             <section className="space-y-3">
               <h2 className="font-display text-2xl text-navy">Tips</h2>
-              <p className="text-sm text-text-muted">
-                Face match belongs on{' '}
-                <Link to="/lookup" className="font-semibold text-navy underline">
-                  Lookup
-                </Link>{' '}
-                (photos you provide) — not on city cameras.
-              </p>
-              {sightings.length === 0 ? (
+              {isFound ? (
+                <p className="surface-card p-5 text-text-muted">
+                  This case is marked found — tip submission is closed. Past community tips
+                  (if any) remain for history only.
+                </p>
+              ) : (
+                <p className="text-sm text-text-muted">
+                  Face match belongs on{' '}
+                  <Link to="/lookup" className="font-semibold text-navy underline">
+                    Lookup
+                  </Link>{' '}
+                  (photos you provide) — not on city cameras.
+                </p>
+              )}
+              {!isFound && sightings.length === 0 ? (
                 <p className="surface-card p-5 text-text-muted">
                   No tips yet. Be the first to{' '}
                   <Link to={`/tip/${person.id}`} className="font-semibold text-navy underline">
@@ -579,7 +600,7 @@ export default function PersonProfile() {
                   </Link>
                   .
                 </p>
-              ) : (
+              ) : sightings.length > 0 ? (
                 <ul className="space-y-3">
                   {[...sightings]
                     .sort((a, b) => new Date(b.date_time || 0) - new Date(a.date_time || 0))
@@ -610,18 +631,20 @@ export default function PersonProfile() {
                       </li>
                     ))}
                 </ul>
-              )}
+              ) : null}
             </section>
 
-            <TipForm
-              personId={person.id}
-              personName={person.name}
-              onSubmitted={() => {
-                listSightings(person.id)
-                  .then((s) => setSightings(s.sightings || []))
-                  .catch(() => {})
-              }}
-            />
+            {!isFound && (
+              <TipForm
+                personId={person.id}
+                personName={person.name}
+                onSubmitted={() => {
+                  listSightings(person.id)
+                    .then((s) => setSightings(s.sightings || []))
+                    .catch(() => {})
+                }}
+              />
+            )}
           </div>
         )}
 

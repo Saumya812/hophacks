@@ -116,10 +116,27 @@ def create_sighting(person_id: UUID, payload: SightingCreate) -> SightingOut:
     Insert a sighting linked to `person_id`.
 
     Coordinates are stored as lat/lng for the Leaflet map on the profile page.
+    Tips are closed once a case is marked found / resolved.
     """
     _ensure_person_exists(person_id)
 
     database = get_database()
+    person_rows = (
+        database.table("persons")
+        .select("id,status,name")
+        .eq("id", str(person_id))
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    case_status = (person_rows[0].get("status") or "").lower() if person_rows else ""
+    if case_status in {"found", "closed"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This case is already resolved — tips are closed.",
+        )
+
     data = payload.model_dump(mode="json")
     data["person_id"] = str(person_id)
 

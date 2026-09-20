@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [patterns, setPatterns] = useState(null)
   const [civic, setCivic] = useState(null)
   const [error, setError] = useState('')
+  const [showNotebook, setShowNotebook] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -23,6 +24,8 @@ export default function Dashboard() {
       })
       .catch((err) => setError(err.message))
   }, [])
+
+  const ratePct = Math.round((stats?.resolution_rate_all_time || 0) * 100)
 
   return (
     <div className="page-pad space-y-8 pt-10">
@@ -43,56 +46,13 @@ export default function Dashboard() {
         </p>
       )}
 
-      {civic && (
-        <section className="surface-card border-l-4 border-l-sage p-5 sm:p-6">
-          <p className="section-label">Marimo · Baltimore open data</p>
-          <h2 className="mt-1 font-display text-2xl text-ink">{civic.title}</h2>
-          <p className="mt-2 text-sm leading-relaxed text-text-muted">{civic.story}</p>
-          <p className="mt-2 text-xs text-text-muted">{civic.disclaimer}</p>
-          <p className="mt-2 text-sm text-ink">
-            Marimo Layer 1 = anonymized tip density (all active cases). Layer 2 = CitiWatch
-            listings. On a case page → Tips &amp; Map: nearest cameras by distance + ask police
-            officially. No live video.
-          </p>
-          <div className="mt-4 rounded-lg bg-cream px-4 py-3 text-left text-sm text-ink">
-            <p className="font-medium">Run the interactive notebook</p>
-            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs text-text-muted">
-              {`cd backend
-.venv\\Scripts\\activate
-pip install marimo pandas folium httpx
-marimo run ..\\notebooks\\baltimore_civic_story.py`}
-            </pre>
-            <p className="mt-2 text-xs text-text-muted">
-              Notebook: <code className="rounded bg-stone px-1">{civic.marimo_notebook}</code>
-              {civic.open_data?.portal ? (
-                <>
-                  {' '}
-                  ·{' '}
-                  <a
-                    href={civic.open_data.portal}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-sage underline"
-                  >
-                    CitiWatch on Open Data
-                  </a>
-                </>
-              ) : null}
-            </p>
-          </div>
-        </section>
-      )}
-
-      {stats && (
+      {stats ? (
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            ['Active cases', stats.active_cases],
-            ['Found / resolved', stats.found_cases],
-            ['Resolved this month', stats.resolved_this_month],
-            [
-              'All-time resolution rate',
-              `${Math.round((stats.resolution_rate_all_time || 0) * 100)}%`,
-            ],
+            ['Active cases', stats.active_cases ?? 0],
+            ['Found / resolved', stats.found_cases ?? 0],
+            ['Resolved this month', stats.resolved_this_month ?? 0],
+            ['All-time resolution rate', `${ratePct}%`],
           ].map(([label, value]) => (
             <div key={label} className="surface-card p-4">
               <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted">
@@ -102,11 +62,20 @@ marimo run ..\\notebooks\\baltimore_civic_story.py`}
             </div>
           ))}
         </section>
+      ) : (
+        !error && (
+          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="surface-card h-24 animate-pulse bg-misty/40" />
+            ))}
+          </section>
+        )
       )}
 
-      {stats?.top_last_seen_areas && (
+      {stats?.top_last_seen_areas?.length > 0 && (
         <section className="surface-card p-5">
           <h2 className="font-display text-2xl text-ink">Most common last-seen areas</h2>
+          <p className="mt-1 text-xs text-text-muted">Active cases only</p>
           <ul className="mt-4 space-y-2">
             {stats.top_last_seen_areas.map((a) => (
               <li
@@ -140,6 +109,52 @@ marimo run ..\\notebooks\\baltimore_civic_story.py`}
                 </li>
               ))}
             </ul>
+          )}
+        </section>
+      )}
+
+      {civic && (
+        <section className="surface-card border-l-4 border-l-sage p-5 sm:p-6">
+          <p className="section-label">Marimo · Baltimore open data</p>
+          <h2 className="mt-1 font-display text-2xl text-ink">{civic.title}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-text-muted">{civic.story}</p>
+          <p className="mt-2 text-xs text-text-muted">{civic.disclaimer}</p>
+          <p className="mt-3 text-sm text-ink">
+            Tip density is for <strong>active</strong> cases only. Found cases are excluded.
+            On an active case page → Tips &amp; Map: nearest listed CitiWatch cameras by distance
+            (no live video).
+          </p>
+          {civic.open_data?.portal ? (
+            <p className="mt-2 text-xs">
+              <a
+                href={civic.open_data.portal}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-sage underline"
+              >
+                CitiWatch on Open Data
+              </a>
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="btn-secondary mt-4"
+            onClick={() => setShowNotebook((v) => !v)}
+          >
+            {showNotebook ? 'Hide notebook steps' : 'Run interactive notebook'}
+          </button>
+          {showNotebook && (
+            <div className="mt-3 rounded-lg bg-cream px-4 py-3 text-left text-sm text-ink">
+              <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-text-muted">
+                {`cd backend
+.venv\\Scripts\\activate
+pip install marimo pandas folium httpx
+marimo run ..\\notebooks\\baltimore_civic_story.py`}
+              </pre>
+              <p className="mt-2 text-xs text-text-muted">
+                Notebook: <code className="rounded bg-stone px-1">{civic.marimo_notebook}</code>
+              </p>
+            </div>
           )}
         </section>
       )}

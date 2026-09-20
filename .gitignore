@@ -3,6 +3,7 @@
 backend/.env
 frontend/.env
 frontend/.env.local
+frontend/.env.localbackup
 *.pem
 
 # Python
@@ -30,6 +31,11 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+scripts/.tunnel-logs/
+scripts/tools/
+scripts/cloudflared-config.template.yml
+scripts/demo_tunnel.ps1
+scripts/link_godaddy_domain_tunnel.ps1
 
 # Local SpacetimeDB tooling, persistent database, credentials, migration backups
 .spacetime/

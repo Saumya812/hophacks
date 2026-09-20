@@ -1,10 +1,9 @@
 /**
- * Case preview modal — tip / share / lookup / flyer / save.
+ * Case preview modal — tip / share / lookup / flyer.
  */
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import FlyerButton from './FlyerButton.jsx'
-import SaveCaseButton from './SaveCaseButton.jsx'
 import { formatEventDate } from '../lib/caseHelpers.js'
 
 export default function Modal({ person, gallerySrc, open, onClose }) {
@@ -33,6 +32,8 @@ export default function Modal({ person, gallerySrc, open, onClose }) {
 
   const photo = person?.photo_url || gallerySrc || null
   const hasCase = Boolean(person?.id)
+  const isFound = (person?.status || '').toLowerCase() === 'found'
+  const isActive = (person?.status || 'active').toLowerCase() === 'active'
 
   async function shareCase() {
     if (!hasCase) return
@@ -97,7 +98,7 @@ export default function Modal({ person, gallerySrc, open, onClose }) {
               className="flex h-[280px] w-full items-center justify-center bg-stone font-display text-5xl text-ink/25"
               style={{ borderRadius: '16px 16px 0 0' }}
             >
-              {(person?.name || '?').charAt(0)}
+              ?
             </div>
           )}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/80 to-transparent px-5 pb-4 pt-16">
@@ -105,7 +106,7 @@ export default function Modal({ person, gallerySrc, open, onClose }) {
               className="text-[11px] font-medium uppercase text-cream"
               style={{ letterSpacing: '2px' }}
             >
-              {hasCase ? 'Active case' : 'Gallery'}
+              {hasCase ? (isFound ? 'Found case' : 'Active case') : 'Gallery'}
             </p>
           </div>
         </div>
@@ -148,13 +149,15 @@ export default function Modal({ person, gallerySrc, open, onClose }) {
                 >
                   Search on Lookup →
                 </button>
-                <Link
-                  to={`/tip/${person.id}`}
-                  className="btn-primary flex-1 !px-3 !py-3 text-center text-xs sm:text-sm"
-                  onClick={onClose}
-                >
-                  Submit a tip
-                </Link>
+                {isActive && (
+                  <Link
+                    to={`/tip/${person.id}`}
+                    className="btn-primary flex-1 !px-3 !py-3 text-center text-xs sm:text-sm"
+                    onClick={onClose}
+                  >
+                    Submit a tip
+                  </Link>
+                )}
                 <button
                   type="button"
                   className="btn-secondary flex-1 !px-3 !py-3 text-xs sm:text-sm"
@@ -165,7 +168,6 @@ export default function Modal({ person, gallerySrc, open, onClose }) {
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <SaveCaseButton personId={person.id} compact />
                 <FlyerButton person={person} />
                 <Link
                   to={`/person/${person.id}`}

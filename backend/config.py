@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_key: str = ""
 
+    # SpacetimeDB connection used by the native query adapter and migration tools.
+    # This remains separate from browser-visible VITE_* settings.
+    spacetimedb_uri: str = "http://127.0.0.1:3000"
+    spacetimedb_database: str = "findmypal"
+    spacetimedb_token: str = ""
+
     # Google Gemini — natural search + Smart Person Search extraction
     gemini_api_key: str = "YOUR_GEMINI_API_KEY"
     # Optional override; empty = auto-detect via ListModels
@@ -53,12 +59,17 @@ class Settings(BaseSettings):
     # Optional sponsor / advanced integrations
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
-    elevenlabs_model: str = "eleven_monolingual_v1"
+    elevenlabs_model: str = "eleven_multilingual_v2"
     backboard_api_key: str = ""
     snowflake_account: str = ""
 
     # Comma-separated list of allowed frontend origins (Vite may use 5173 or 5174)
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = (
+        "http://localhost:5173,http://localhost:5174,"
+        "http://127.0.0.1:5173,http://127.0.0.1:5174,"
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "https://findmypal.us,https://www.findmypal.us"
+    )
 
     # Mock authenticated user (no real auth in v1)
     mock_user_id: str = "00000000-0000-0000-0000-000000000001"
