@@ -82,4 +82,4 @@ async def database_error_handler(request, exc):
 @app.get("/health/database", tags=["health"])
 def database_health():
     get_database().table("persons").select("id").limit(1).execute()
-    return {"status": "healthy", "database": "supabase"}
+    return {"status": "healthy", "database": "spacetimedb"}

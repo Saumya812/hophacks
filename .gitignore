@@ -1,5 +1,6 @@
 # Secrets & local env
 .env
+hophacks 2/
 backend/.env
 frontend/.env
 frontend/.env.local

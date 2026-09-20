@@ -164,25 +164,6 @@ API helpers:
 - `GET /analytics/baltimore/cameras` — camera points proxy
 - `GET /analytics/heatmap/{id}` — tip points for overlay
 
-## 5. Production deployment
-
-The repository includes a GitHub Actions deployment workflow for `findmypal.us`.
-It builds the frontend, validates the backend, and deploys `main` to the VPS over
-SSH. The backend listens privately on port `3077`; Nginx serves the frontend and
-proxies `/api/` to it.
-
-Configure these GitHub repository secrets before pushing to `main`:
-
-- `FINDMYPAL_SERVER_HOST` — VPS hostname or IP
-- `FINDMYPAL_SERVER_USER` — SSH user (the current VPS setup uses `root`)
-- `FINDMYPAL_SERVER_PORT` — SSH port, normally `22`
-- `FINDMYPAL_SSH_PRIVATE_KEY` — private key matching an authorized key on the VPS
-
-Put production credentials in `/etc/findmypal/backend.env` on the VPS. At minimum,
-set `SUPABASE_URL` and `SUPABASE_KEY`; add the Gemini/search integration keys as
-needed. Point the `findmypal.us` and `www.findmypal.us` DNS A records to the VPS
-before enabling TLS with Certbot.
-
 ---
 
 ## Design

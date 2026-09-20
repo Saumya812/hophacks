@@ -23,15 +23,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Supabase (PostgreSQL) connection via the official client
-    supabase_url: str = ""
-    supabase_key: str = ""
-
-    # SpacetimeDB connection used by the native query adapter and migration tools.
-    # This remains separate from browser-visible VITE_* settings.
-    spacetimedb_uri: str = "http://127.0.0.1:3000"
-    spacetimedb_database: str = "findmypal"
-    spacetimedb_token: str = ""
 
     # Google Gemini — natural search + Smart Person Search extraction
     gemini_api_key: str = "YOUR_GEMINI_API_KEY"
@@ -61,6 +52,9 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model: str = "eleven_multilingual_v2"
     backboard_api_key: str = ""
+    spacetimedb_uri: str = "http://127.0.0.1:3000"
+    spacetimedb_database: str = "findmypal"
+    spacetimedb_token: str = ""
     snowflake_account: str = ""
 
     # Comma-separated list of allowed frontend origins (Vite may use 5173 or 5174)
