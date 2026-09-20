@@ -95,8 +95,8 @@ export default function ReportMissing() {
                     {(p.name || '?').charAt(0)}
                   </div>
                 )}
-                <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded bg-white/95 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success shadow-sm">
-                  <span className="live-pulse-dot" />
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded bg-white/95 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700 shadow-sm">
+                  <span className="live-pulse-dot live-pulse-dot-alert" />
                   Active
                 </span>
               </div>
