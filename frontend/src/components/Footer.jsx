@@ -19,7 +19,7 @@ export default function Footer() {
         <div>
           <p className="font-display text-2xl font-semibold text-ink">FindMyPal</p>
           <p className="mt-2 max-w-sm text-sm leading-relaxed text-text-muted">
-            Someone needs you to look.
+            A million eyes looking together 🕊️
           </p>
         </div>
         <div className="sm:justify-self-end">
