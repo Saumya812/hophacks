@@ -575,7 +575,12 @@ def record_share(person_id: UUID):
     p = sb.table("persons").select("shares_count").eq("id", str(person_id)).limit(1).execute().data
     if not p:
         raise HTTPException(404, "Person not found")
-    result = sb.table("persons").increment({"shares_count": 1}).eq("id", str(person_id)).execute()
+    current = sb.table("persons").select("shares_count").eq("id", str(person_id)).limit(1).execute().data
+    if not current:
+        raise HTTPException(status_code=404, detail="Person not found")
+    result = sb.table("persons").update(
+        {"shares_count": int(current[0].get("shares_count") or 0) + 1}
+    ).eq("id", str(person_id)).execute()
     return {"shares_count": result.data[0]["shares_count"]}
 
 
